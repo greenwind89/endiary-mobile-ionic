@@ -1,0 +1,28 @@
+<ion-view view-title="Note" >
+  <ion-nav-buttons side="secondary">
+    <button class="button button-clear post-btn" ng-click="vm.addNote()" ng-class="{active: vm.note !== '', inactive: vm.note === ''}">
+      Post
+    </button>
+  </ion-nav-buttons>
+  <ion-content class="take-note" >
+    <div ng-show="vm.upcomingTask" class="upcoming-task" style="background-color: {{vm.upcomingTask.color ? vm.upcomingTask.color : vm.defaultColor}}">
+      <span class="title">Upcoming: {{vm.upcomingTask.title}}</span>
+      <span class="time">{{vm.upcomingTask.start_time | startAndEnd}} </span>
+    </div>
+    <div class="title-holder" style="background-color:{{vm.task.color ? vm.task.color : vm.defaultColor }}">
+      <h4 class="title">{{vm.task ? vm.task.title : 'No Task in this period'}}</h4>
+      <div class="time-holder">{{vm.startTime | startAndEnd: vm.duration}}</div>
+    </div>
+    <div class="list">
+
+      <div class="item item-input note-holder">
+        <textarea ng-model="vm.note" class="note-area" placeholder="Note ... "></textarea>
+
+      </div>
+      <div class="item item-body" ng-repeat="record in vm.records">
+        {{record.title}}
+      </div>
+
+    </div>
+  </ion-content>
+</ion-view>

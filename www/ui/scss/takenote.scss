@@ -1,0 +1,46 @@
+.take-note {
+  .title-holder {
+    height: $take-note-task-title-height;
+    color: $take-note-task-title-color;
+    position: relative;
+    .title {
+      color: $take-note-task-title-color;
+      padding: 15px;
+    }
+
+    .time-holder {
+      position: absolute;
+      bottom: 0px;
+      right: 2px;
+    }
+
+  }
+
+  .note-holder {
+    height: $take-note-note-height;
+    .note-area {
+      height: 100%;
+      line-height: 20px;
+      font-size: 12pt;
+    }
+  }
+
+  .upcoming-task {
+    padding: 4px;
+    color: $take-note-task-title-color;
+    .time {
+      float: right;
+    }
+  }
+
+}
+.post-btn {
+  &.active {
+    color: $positive !important;
+    opacity: 1 !important;
+  }
+
+  &.inactive {
+    color: #ddd !important;
+  }
+}

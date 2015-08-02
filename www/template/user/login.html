@@ -1,0 +1,32 @@
+
+<ion-content class="login-content">
+  <div class="login-logo">
+    <h1 class="title">EnDiary</h1>
+  </div>
+
+
+  <div class="list">
+    <label class="item item-input">
+      <span class="input-label">Email</span>
+      <input type="text" ng-model="vm.email">
+    </label>
+    <label class="item item-input">
+      <span class="input-label">Password</span>
+      <input type="password" ng-model="vm.password">
+    </label>
+  </div>
+  <div class="server-message" ng-class="{assertive: !vm.message.success,  balance: vm.message.success}" ng-show="vm.message">
+    {{vm.message.content}}
+  </div>
+  <button ng-click="vm.login()" class="button button-block button-positive">
+    Login
+  </button>
+  <div class="or">
+    or 
+  </div>
+  <div class="oauth-login">
+    <a href="" class="button button-clear button-positive">
+      Login with Facebook
+    </a>
+  </div>
+</ion-content>
