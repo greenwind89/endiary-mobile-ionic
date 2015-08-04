@@ -1,8 +1,8 @@
 (function() {
   'use strict';
   angular.module('endiary').controller('endiary.takeNoteCtrl', takeNoteCtrl); 
-  takeNoteCtrl.$inject = ['yodacore.taskRecordService', 'yodacore.CONSTS', 'yodacore.time', 'yodacore.recordDataService'];
-  function takeNoteCtrl(TaskRecordService, CONSTS, time, RecordService) {
+  takeNoteCtrl.$inject = ['yodacore.taskRecordService', 'yodacore.CONSTS', 'yodacore.time', 'yodacore.recordDataService', '$scope'];
+  function takeNoteCtrl(TaskRecordService, CONSTS, time, RecordService, $scope) {
     // MARK: bindable variables
     var vm = this; 
     vm.task = null;
@@ -15,8 +15,9 @@
 
     // MARK: bindable functions
     vm.addNote = addNote;
-    
+    vm.doRefresh = doRefresh;
 
+    // MARK: initialization
     getCurrentTask();
 
     // MARK: functions
@@ -50,10 +51,11 @@
             vm.duration = Math.round((time.convertTo24h(time.getTheEndOfDate(new Date())) - time.convertTo24h(vm.startTime)) * 60); 
           }
 
-          console.log('vm', vm);
 
         }
-      })
+
+        $scope.$broadcast('scroll.refreshComplete');
+      });
     }
 
     function addNote() {
@@ -67,6 +69,10 @@
       RecordService.createNewRecord(newRecord).then(function() {
       });
       vm.note = '';
+    }
+
+    function doRefresh() {
+      getCurrentTask();
     }
   }
 })();

@@ -9,7 +9,7 @@ function LoginCtrl (UserService, $state) {
   var vm = this; 
 
   // MARK: Bindable variable
-  vm.email = 'minh@iastate.edu';
+  vm.email = 'minh.truonganh7@gmail.com';
   vm.password = '123456'; 
   vm.message = {};
 
