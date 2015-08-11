@@ -14,6 +14,11 @@
   <preference name="DisallowOverscroll" value="true"/>
   <preference name="android-minSdkVersion" value="16"/>
   <preference name="BackupWebStorage" value="none"/>
+  <preference name="KeyboardDisplayRequiresUserAction" value="false" />
+
+  <feature name="Keyboard">
+    <param name="ios-package" value="IonicKeyboard" onload="true" />
+  </feature>
   <feature name="StatusBar">
     <param name="ios-package" value="CDVStatusBar" onload="true"/>
   </feature>

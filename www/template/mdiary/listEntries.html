@@ -1,0 +1,28 @@
+
+<div class="list" data-ng-controller="yodacore.listEntriesCtrl as vm">
+
+  <div class="item item-input note-holder" data-ng-controller="yodacore.createEntryCtrl as vm" >
+    <textarea ng-model="vm.note" id="js-note-compose-box" data-focus-me-now class="note-area" placeholder="Note ... "></textarea>
+
+  </div>
+
+  <ion-list ng-repeat="group in vm.groups" >
+    <div class="item item-divider">
+      {{group.time | yodaDateString}}
+    </div>
+    <ion-item class="item-text-wrap list-item-note item-remove-animate" data-ng-repeat="item in group.items"  type="item-text-wrap">
+      <p ui-sref="main.entryDetail({ id: item._id, data: item })" ng-bind-html="item.content"></p>
+      <ion-option-button class="button-assertive" ng-click="vm.removeNote(item)">
+        Delete
+      </ion-option-button>
+    </ion-item>
+  </ion-list>
+
+  <ion-infinite-scroll
+    icon="ion-loading-c"
+    data-ng-if="vm.haveMoreDataToLoad"
+    on-infinite="vm.loadMore()"
+    distance="1%">
+  </ion-infinite-scroll>
+
+</div>

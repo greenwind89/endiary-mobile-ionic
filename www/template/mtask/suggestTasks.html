@@ -1,0 +1,14 @@
+<div data-ng-controller="yodacore.suggestTasksCtrl as vm">
+  <div class="list list-inset">
+    <label class="item item-input">
+      <i class="icon ion-search placeholder-icon"></i>
+      <input type="text" placeholder="Task for this entry?" data-ng-model="vm.newTitle" data-yoda-pause-typing="0.5">
+    </label>
+  </div>
+  <ion-list ng-repeat="task in vm.tasks" >
+    <ion-item data-ng-click="vm.handleTaskSelected(task)" class="item-text-wrap" type="item-text-wrap">
+      <p ng-bind-html="task.title"></p>
+    </ion-item>
+  </ion-list>
+  
+</div>

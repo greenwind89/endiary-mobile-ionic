@@ -14,8 +14,8 @@
           <div class="time-holder">{{task.start_time | startAndEnd: task.duration}}</div>
 
         </div>
-        <div class="item item-body" ng-repeat="record in vm.records | filter:{task_id:task._id}">
-          <p>{{record.title}}</p>
+        <div class="item item-body" ng-repeat="record in vm.records | filter:{task_id:task._id, is_note: true}">
+          <p>{{record.content}}</p>
         </div>
 
         <div class="item item-body" >

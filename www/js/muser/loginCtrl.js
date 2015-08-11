@@ -9,7 +9,8 @@ function LoginCtrl (UserService, $state) {
   var vm = this; 
 
   // MARK: Bindable variable
-  vm.email = 'minh.truonganh7@gmail.com';
+  // vm.email = 'minh.truonganh7@gmail.com';
+  vm.email = 'minh@iastate.edu';
   vm.password = '123456'; 
   vm.message = {};
 
@@ -25,7 +26,7 @@ function LoginCtrl (UserService, $state) {
       vm.message.success = result.success;
 
       if(result.success) {
-        $state.go('main.taskDiary');
+        $state.go('main.takeNote');
       }
 
     });

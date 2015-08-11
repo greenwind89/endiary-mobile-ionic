@@ -5,4 +5,6 @@ node_modules/
 platforms/
 plugins/
 
+# ignore vim swap files
+*.swp
 

@@ -1,0 +1,22 @@
+<ion-view view-title="Entry Detail">
+  <ion-nav-bar>
+    <ion-nav-back-button>
+    </ion-nav-back-button>
+  </ion-nav-bar>
+  <ion-content class="entry-detail">
+    <div data-ng-if="entry" data-ng-controller="yodacore.itemEntryCtrl as vm">
+
+      <div contenteditable data-yoda-pause-typing="1" class="entry-content" data-ng-model="vm.entry.content"> </div>
+      <div class="task-of-entry">
+        <div class="create-form" data-ng-hide="vm.entry.task_id" data-ng-include="'template/mtask/suggestTasks.html'"> 
+        </div>
+        <div class="task-title" data-ng-show="vm.entry.task_id">
+          <span style="color: {{vm.entry.color}}"> {{vm.entry.task_title}}</span>
+          <span class="ion-ios-close-outline remove-task-btn" data-ng-click="vm.removeTaskFromEntry()"></span>
+            
+          </div>
+      </div>
+    </div>
+
+  </ion-content>
+</ion-view>

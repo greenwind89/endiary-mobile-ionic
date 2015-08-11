@@ -33,6 +33,13 @@
     }
   }
 
+  .list-item-note {
+    p {
+      color: #222 !important;
+      font-size: 16px;
+    }
+  }
+
 }
 .post-btn {
   &.active {

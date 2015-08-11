@@ -4,13 +4,14 @@
 angular.module('endiary', [
   'ionic', 
   'muser', 
+  'mdiary', 
 
   // shared module from web
   'yodacore']) 
 
 .run(['$ionicPlatform', 'yodacore.CONSTS', function($ionicPlatform, CONSTS) {
-  // CONSTS.ROOT_URL = 'http://localhost:3000';
-  CONSTS.ROOT_URL = 'https://endiary.com';
+  CONSTS.ROOT_URL = 'http://localhost:3000';
+  // CONSTS.ROOT_URL = 'https://endiary.com';
   $ionicPlatform.ready(function() {
     // Hide the accessory bar by default (remove this to show the accessory bar above the keyboard
     // for form inputs)
@@ -45,12 +46,12 @@ angular.module('endiary', [
         templateUrl: 'template/endiary/taskDiaryView.html',
         controller: 'endiary.taskDiaryCtrl as vm'
       },
-      'topList@main.taskDiary': {
-        templateUrl: 'template/task/taskList.html',
-      },
-      'bottomList@main.taskDiary': {
-        templateUrl: 'template/task/taskListWithTime.html',
-      }
+      // 'topList@main.taskDiary': {
+      //   templateUrl: 'template/task/taskList.html',
+      // },
+      // 'bottomList@main.taskDiary': {
+      //   templateUrl: 'template/task/taskListWithTime.html',
+      // }
     }
   }).
   state('main.takeNote', {

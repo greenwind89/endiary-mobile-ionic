@@ -8,64 +8,77 @@
     vm.task = null;
     vm.upcomingTask = null;
     vm.records = [];
+    vm.todayRecords = [];
     vm.note = ''; 
     vm.defaultColor = CONSTS.DEFAULT_COLOR;
     vm.startTime = null;
     vm.duration = null; 
+    vm.currentDate = new Date();
 
     // MARK: bindable functions
     vm.addNote = addNote;
     vm.doRefresh = doRefresh;
+    vm.removeNote = removeNote;
 
     // MARK: initialization
-    getCurrentTask();
+    init();
 
     // MARK: functions
+
+    function init() {
+      getCurrentTask();
+    }
+
+    function initListEntriesOptions() {
+      $scope.listEntriesOptions = {
+        type: CONSTS.TYPE_ENTRY_BY_DATE_RANGE,
+        endDate: vm.currentDate,
+        shouldLoadMore: true,
+        groupByTask: true,
+        startDate: new Date(vm.currentDate.getTime() - 24 * 60 * 60 *1000)
+      };
+      
+    }
+
     function getCurrentTask() {
-      TaskRecordService.getCurrentTaskAndRecords().then(function(result, a) {
-        console.log('a', a, result);
-        var task = result.currentTask;
-        var records = result.records;
-        var prevTask = result.prevTask;
-        var nextTask = result.nextTask;
+      TaskRecordService.getCurrentTaskForCurrentNote().then(function(result) {
+        vm.task = result.currentTask;
+        vm.startTime = result.startTime;
+        vm.duration = result.duration;
+        vm.upcomingTask = result.upcomingTask;
 
-        vm.task = task;
-        vm.records = records;
-
-        if(task) {
-          vm.startTime = task.start_time;
-          vm.duration = task.duration;
-        } else {
-          if(prevTask) {
-            var prevStart = new Date(prevTask.start_time);
-            vm.startTime = new Date(prevStart.getTime() + prevTask.duration * 60 * 1000); 
-          } else {
-            vm.startTime = time.getTheBeginningOfDate(new Date());
-          }
-
-          if(nextTask) {
-            var nextStart = new Date(nextTask.start_time);
-            vm.duration = Math.round((time.convertTo24h(nextStart) - time.convertTo24h(vm.startTime)) * 60); 
-            vm.upcomingTask = nextTask;
-          } else {
-            vm.duration = Math.round((time.convertTo24h(time.getTheEndOfDate(new Date())) - time.convertTo24h(vm.startTime)) * 60); 
-          }
-
-
-        }
-
+        console.log('current vm', vm, result);
         $scope.$broadcast('scroll.refreshComplete');
+        initListEntriesOptions();
       });
+
+    }
+
+    function getNotesForTask() {
+
+      if(vm.task) {
+        RecordService.getNotesByTaskId(vm.task._id).then(function(notes) {
+          vm.records = notes;
+        });
+      }         
+
+      RecordService.getNotesByDate(new Date()).then(function(notes) {
+        vm.todayRecords = notes;
+      })
     }
 
     function addNote() {
       var newRecord = {
-        title: vm.note,
       };
+
       if(vm.task) {
         newRecord.task_id = vm.task._id;
         newRecord.list_id = vm.task.list_id;
       }
+
+      newRecord.is_note = true;
+      newRecord.content = vm.note;
+
       RecordService.createNewRecord(newRecord).then(function() {
       });
       vm.note = '';
@@ -73,6 +86,10 @@
 
     function doRefresh() {
       getCurrentTask();
+    }
+
+    function removeNote(note) {
+      RecordService.removeRecord(note);
     }
   }
 })();

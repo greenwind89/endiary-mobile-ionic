@@ -4,13 +4,14 @@
 angular.module('endiary', [
   'ionic', 
   'muser', 
+  'mdiary', 
 
   // shared module from web
   'yodacore']) 
 
 .run(['$ionicPlatform', 'yodacore.CONSTS', function($ionicPlatform, CONSTS) {
-  // CONSTS.ROOT_URL = 'http://localhost:3000';
-  CONSTS.ROOT_URL = 'https://endiary.com';
+  CONSTS.ROOT_URL = 'http://localhost:3000';
+  // CONSTS.ROOT_URL = 'https://endiary.com';
   $ionicPlatform.ready(function() {
     // Hide the accessory bar by default (remove this to show the accessory bar above the keyboard
     // for form inputs)
@@ -45,12 +46,12 @@ angular.module('endiary', [
         templateUrl: 'template/endiary/taskDiaryView.html',
         controller: 'endiary.taskDiaryCtrl as vm'
       },
-      'topList@main.taskDiary': {
-        templateUrl: 'template/task/taskList.html',
-      },
-      'bottomList@main.taskDiary': {
-        templateUrl: 'template/task/taskListWithTime.html',
-      }
+      // 'topList@main.taskDiary': {
+      //   templateUrl: 'template/task/taskList.html',
+      // },
+      // 'bottomList@main.taskDiary': {
+      //   templateUrl: 'template/task/taskListWithTime.html',
+      // }
     }
   }).
   state('main.takeNote', {
@@ -70,6 +71,31 @@ angular.module('endiary', [
 });
 
 })();
+
+
+(function() {
+'use strict';
+
+angular.module('mdiary', ['yodacore'])
+.config(function($stateProvider, $urlRouterProvider) {
+
+  $stateProvider
+
+  .state('main.entryDetail', {
+    url: '/entry/:id',
+    views: {
+      'mainContent': { 
+        templateUrl: 'template/mdiary/detailEntry.html',
+        controller: 'mdiary.detailEntryCtrl as vm',
+      },
+    }
+  });
+
+});
+
+
+})();
+
 
 
 (function() {
@@ -98,6 +124,305 @@ angular.module('muser', ['ionic', 'yodacore'])
 
 
 angular.module('yodacore', ['ngResource']);
+
+(function() {
+'use strict';
+
+angular.module('yodacore').controller('yodacore.listTasksCtrl', listTasksCtrl);
+
+listTasksCtrl.$inject = ['$scope', 'yodacore.taskDataService', 'yodacore.CONSTS', 'yodacore.taskProcessService', '$q'];
+
+function listTasksCtrl($scope, TaskService, CONSTS, TaskProcess, $q) {
+  var vm = this;
+  var sortTasks, getTasks, initCreateTaskOptionsFunc; // two general action depends of type of list
+  var shouldFireCurrentEvent = false;
+  var options;
+
+  // MARK: Bindable variables 
+  vm.tasks = []; 
+  vm.thisDate = null; // in case of querying by date
+  vm.parentTask = null; // in case of querying subtasks
+  vm.parentList = null; // in case of querying by list 
+  vm.showTaskDetail = false; // to let the detail UI know when to show task detail
+  vm.currentTask = null; // in case we want to know which task is selected
+  vm.shouldShowTimeDetail = false; // for the view that have time detail
+
+
+  // MARK: Bindable functions
+  vm.setCurrent = setCurrent;
+    
+  // MARK: initialization 
+  initWatches();
+
+  function initData() {
+    options = $scope.listTasksOptions;
+    console.log('listTaskOption ', options);
+    if(options) {
+      shouldFireCurrentEvent = options.shouldFireCurrentEvent ? true : false;
+
+      if(options.type === CONSTS.TYPE_TASK_LIST_BY_DATE) {
+        vm.thisDate = options.currentDate;
+        getTasks = getTaskOfThisDate;
+        sortTasks = TaskProcess.sortByOrderInDate;
+        initCreateTaskOptionsFunc = initCreateTaskOptionsForDate;
+      } 
+      else if(options.type === CONSTS.TYPE_SUBTASK_LIST_OF_TASK) {
+        vm.parentTask = options.parentTask;
+        getTasks = getSubTasksOfTask;
+        sortTasks = TaskProcess.sortByOrderInList;
+        initCreateTaskOptionsFunc = initCreateTaskOptionsForSubtask;
+        if(!vm.parentTask) return;
+      }
+      
+      else if(options.type === CONSTS.TYPE_TASK_LIST_BY_LIST) {
+        vm.parentList = options.currentList;
+        getTasks = getTasksOfListWithoutSubtask;
+        sortTasks = TaskProcess.sortByOrderInList;
+        initCreateTaskOptionsFunc = initCreateTaskOptionsForList;
+      }
+
+      else {
+        console.error('This type is not yet handled', options);
+      }
+
+
+      getDataAndSort();
+    }
+  }
+
+
+  function initWatches() {
+    $scope.$watch('listTasksOptions', function() { // for list of tasks in list
+      console.log('change parent list');
+      initData();
+    });
+
+
+    $scope.$on('task-change-order', function() {
+      sortTasks(vm.tasks);
+    });
+
+    $scope.$watchCollection('vm.tasks', function() {
+      sortTasks && sortTasks(vm.tasks);
+    });
+
+    $scope.$on(CONSTS.EVENT_CREATE_NEW_TASK_NEXT_TO, handleCreateNextTask);
+    $scope.$on(CONSTS.EVENT_TASK_MOVE_UP_A_TASK, handleMoveUpATask);
+    $scope.$on(CONSTS.EVENT_TASK_MOVE_DOWN_A_TASK, handleMoveDownATask);
+
+    $scope.$on(CONSTS.EVENT_ITEM_DROPPED_ON_ITEM, handleTaskDropped);
+
+    $scope.$on(CONSTS.EVENT_TASK_SELECTED, handleTaskSelected);
+
+    $scope.$on(CONSTS.EVENT_CURRENT_TASK_DELETED, handleCurrentTaskDeleted);
+  }
+
+  function initCreateTaskOptionsForList() {
+    $scope.createTaskOptions = {
+      type: CONSTS.TYPE_CREATE_TASK_IN_LIST,
+      currentList: vm.parentList,
+      tasksInList: vm.tasks
+    };
+
+    console.log('createTaskOptions for List', $scope.createTaskOptions);
+  }
+
+  function initCreateTaskOptionsForDate() {
+    $scope.createTaskOptions = {
+      type: CONSTS.TYPE_CREATE_TASK_IN_DATE,
+      currentDate: vm.thisDate,
+      tasksInList: vm.tasks
+    };
+
+    console.log('createTaskOptions for Date', $scope.createTaskOptions);
+  }
+
+  function initCreateTaskOptionsForSubtask() {
+    $scope.createTaskOptions = {
+      type: CONSTS.TYPE_CREATE_SUBTASK_OF_TASK,
+      currentTask: vm.parentTask,
+      tasksInList: vm.tasks
+    };
+
+    console.log('createTaskOptions for subtask', $scope.createTaskOptions);
+  }
+
+  // MARK: event handler
+
+  function handleTaskDropped(evt, droppedTask, param, targetTask) {
+    var tasks = vm.tasks;
+    var orderType = options.type === CONSTS.TYPE_TASK_LIST_BY_DATE ? 'date' : 'list';
+
+    TaskService.updateATaskOrderInList(targetTask, droppedTask, param.draggedPos, tasks, orderType);
+  }
+
+  function handleTaskSelected(evt, selectedTask) {
+    setCurrent(selectedTask);
+  }
+
+  function handleCurrentTaskDeleted(evt) {
+    console.log('current task deleted', $scope.currentTask);
+    if(!moveUpATask($scope.currentTask)) {
+      if(!moveDownAtask($scope.currentTask)) {
+        $scope.$emit(CONSTS.EVENT_NO_CURRENT_TASK);
+      }
+    }
+    
+  }
+
+  function handleMoveDownATask(evt, fromTask) {
+    moveDownAtask(fromTask);
+    evt.stopPropagation();
+  }
+
+  function handleMoveUpATask(evt, fromTask) {
+    moveUpATask(fromTask);
+    evt.stopPropagation();
+  }
+
+  function handleCreateNextTask(evt, prevTask, newTitle) {
+    var tasks = vm.tasks;
+    var newTask = {
+      list_id:  prevTask.list_id,
+      title: newTitle || '',
+      list_order_number: TaskService.getOrderNumber(prevTask, tasks),
+      is_done: false,
+      color: prevTask.color
+    };
+
+    if(prevTask.is_subtask) {
+      newTask.is_subtask = true;
+      newTask.parent_task_id = prevTask.parent_task_id;
+    }
+
+    TaskService.createNewTask(newTask).then(function(task) {
+      setCurrent(task);
+    });
+
+    evt.stopPropagation();
+    // setCurrent();
+  }
+
+  // MARK: convenience methods
+  function moveUpATask(fromTask) {
+    var index = vm.tasks.indexOf(fromTask);
+    if(index === 0) return false; // no need to move up from top element
+
+    setCurrent(vm.tasks[index - 1]);
+    return true;
+  }
+
+  function moveDownAtask(fromTask) {
+    var index = vm.tasks.indexOf(fromTask);
+    if(index === vm.tasks.length - 1) return false; // no need to move down from bottom element
+    setCurrent(vm.tasks[index + 1]);
+    return true;
+  }
+
+  // MARK: get
+  function getDataAndSort() {
+    if(!angular.isFunction(sortTasks) || !angular.isFunction(getTasks)) {
+      console.error('sortTask or get Task is not function', sortTasks, getTasks);
+      return;
+    }
+
+    getTasks().then(function(tasks) {
+      sortTasks(tasks);
+      vm.tasks = tasks;
+      if(angular.isFunction(initCreateTaskOptionsFunc)) initCreateTaskOptionsFunc();
+    })
+  }
+
+  function getTasksOfListWithoutSubtask() {
+    if(!vm.parentList)  {
+      console.error('SHould have parent ist');
+      return;
+    }
+
+    return $q(function(resolve, reject) {
+      TaskService.getNotDoneTasksByListIdNoSubTask(vm.parentList._id).then(function(tasks) {
+        resolve(tasks);
+      });
+    });
+  }
+
+  function getTaskOfThisDate() {
+    return $q(function(resolve, reject) {
+      TaskService.getTaskByDate(vm.thisDate).then(function(tasks) {
+        resolve(tasks);
+      });
+    });
+
+  }
+
+  function getSubTasksOfTask() {
+    return $q(function(resolve, reject) {
+      TaskService.getSubTaskByTaskId(vm.parentTask._id).then(function(subtasks) {
+        resolve(subtasks);
+      });
+    });
+  }
+
+  function setCurrent(task) {
+    console.log('vm.currentTask', vm.currentTask, task);
+
+    vm.currentTask = task;
+    if(shouldFireCurrentEvent) $scope.$emit(CONSTS.EVENT_CURRENT_TASK_OF_LIST_CHANGE, task);
+  }
+
+
+};
+
+})();
+
+
+(function() {
+  'use strict';
+
+  angular.module('yodacore').controller('yodacore.suggestTasksCtrl', SuggestTasksCtrl); 
+
+  SuggestTasksCtrl.$inject = ['yodacore.taskDataService', '$scope','yodacore.CONSTS'];
+  function SuggestTasksCtrl(TaskService, $scope, CONSTS) {
+    var vm = this; 
+    // MARK: bindable variables
+    vm.newTitle = ''; 
+    vm.tasks = [];
+
+    // MARK: bindable functions
+
+    vm.getSuggestedTasks = getSuggestedTasks;
+    vm.selectTask = selectTask; // only for callback from typeahead plugin
+    vm.handleTaskSelected = handleTaskSelected; // general use, for mobile also
+
+    // MARK: initialization
+    initWatches();
+
+    // MARK: functions
+    function initWatches() {
+      $scope.$on(CONSTS.EVENT_TYPING_PAUSE, handleTypingPause);
+    }
+
+    function handleTypingPause() {
+      getSuggestedTasks(vm.newTitle).then(function(data) {
+        vm.tasks = data;
+      });
+    }
+
+    function getSuggestedTasks(title) {
+      return TaskService.getSuggestedTasks(title);
+    }
+
+    function selectTask($item, $model, $label) {
+      handleTaskSelected($item);
+    }
+
+    function handleTaskSelected(task) {
+      $scope.$emit(CONSTS.EVENT_TASK_TYPEAHEAD_SELECTED, task);
+      vm.newTitle = '';
+    }
+  }
+})();
+
 
 'use strict';
 
@@ -334,9 +659,9 @@ angular.module('yodacore').service('yodacore.merge', [function() {
      * if yes then we merge two object 
      * if not we add new object into structure
      * if an object in data has no ID, that object is just added recently by an add function, we compare the title and merge 
+     * The usage of title as temporary id is justified since it is only used in case of not _id and it only occurs when create new item, if 2 item with empty title created at the same time, the item come back from server is safe to merge to any of 2 items since both of them are equal
      * @param {Array or Object} data 
      * @return true if nothing wrong happens
-     * @todo instead of compare title, we should generate an internal ID to check for new and old data without server's ID 
      */
     var add = function(val) {
       val = angular.isArray(val) ? val : [val];
@@ -349,6 +674,7 @@ angular.module('yodacore').service('yodacore.merge', [function() {
 
           if(old) {
             if(!old.hasOwnProperty('_id')) { 
+              console.log('key', keys);
               // the old data is a temporary insertion using title as key instead of id, we should remove it from keys
               delete keys[object.title];
               // remove(old, true);
@@ -446,11 +772,32 @@ angular.module('yodacore').service('yodacore.merge', [function() {
 }]);
 
 
+(function() {
+  'use strict';
+
+  angular.module('yodacore').factory('yodacore.mid', mid); 
+
+  mid.$inject = [];
+  function mid() {
+    var currentId = 1; 
+
+    return {
+      getID: getID
+    };
+
+    function getID() {
+      return currentId++;
+    }
+  }
+})();
+
 'use strict' 
 
 angular.module('yodacore').factory('yodacore.time', [function() {
   return {
     areDifferentDates: function(date1, date2) {
+      if(!date1 || !date2) return true;
+
       return date1.getFullYear() != date2.getFullYear() || date1.getDate() != date2.getDate() || date1.getMonth() != date2.getMonth() ? true : false;
     },
 
@@ -562,7 +909,7 @@ angular.module('yodacore').factory('yodacore.time', [function() {
       var date = new Date(date);
       date.setHours(0);
       date.setMinutes(0);
-      date.setSeconds(1);
+      date.setSeconds(0);
       date.setMilliseconds(0);
       return date;
     },
@@ -858,15 +1205,41 @@ angular.module('yodacore').service('yodacore.mergeRecord', ['yodacore.merge', 'y
         if(filter.hasOwnProperty(key)) { // don't want its prototype
           if(key === 'date') { 
             if(!angular.isDate(filter[key])) {
-              isValid = false;
-              break;
-            }
+              // it may be querying by date range
+              var query = filter[key]; 
+              var recordDate = new Date(record.start_time);
+              if(!query.hasOwnProperty('$lte') && !query.hasOwnProperty('$gte')) {
+                isValid = false;
+                break;
+              }
 
-            var filterDate = filter[key];
-            var recordDate = new Date(record.start_time);
-            if(time.areDifferentDates(filterDate, recordDate)) {
-              isValid = false;
-              break;
+              if(query.hasOwnProperty('$lte')) {
+                var end = new Date(query['$lte']);
+                if(end.getTime() < recordDate.getTime()) {
+                  isValid = false;
+                  break;
+                }
+              }
+
+              if(query.hasOwnProperty('$gte')) {
+                var start = new Date(query['$gte']);
+                if(start.getTime() > recordDate.getTime()) {
+                  isValid = false;
+                  break;
+                }
+              }
+
+            }
+            
+            // query by date
+            else {
+
+              var filterDate = filter[key];
+              var recordDate = new Date(record.start_time);
+              if(time.areDifferentDates(filterDate, recordDate)) {
+                isValid = false;
+                break;
+              }
             }
           } else {
             if(angular.isUndefined(record[key]) || record[key] !== filter[key]) {
@@ -920,27 +1293,59 @@ function RecordService($resource, $rootScope, mergeRecord, helper, TaskService, 
     });
 
   var aggregationListByDateAPI = $resource('/record/aggregatelbd')
+  var relatedAPI = $resource('/record/related')
 
   return {
-    removeRecordByTaskId: removeRecordByTaskId,
-    updateRecordTime: updateRecordTime,
-    getSummaryOfListByDate: getSummaryOfListByDate,
-    createNewRecordForItem: createNewRecordForItem,
-    summaryRecordsByItems: summaryRecordsByItems,
-    getItemByName: getItemByName,
-    createNewRecordForDoneTask: createNewRecordForDoneTask,
-    getRecordByDateNoSync: getRecordByDateNoSync,
-    getRecordByDate:getRecordByDate,
-    removeRecord: removeRecord,
-    updateRecord: updateRecord,
+    // get All
     getAllRecords: getAllRecords,
     fetchData: fetchData,
+    
+    // Summary
+    getSummaryOfListByDate: getSummaryOfListByDate,
+    summaryRecordsByItems: summaryRecordsByItems,
+
+    // CRUD
+    updateRecordTime: updateRecordTime,
+    removeRecordByTaskId: removeRecordByTaskId,
+    createNewRecordForItem: createNewRecordForItem,
+    createNewRecordForDoneTask: createNewRecordForDoneTask,
+    removeRecord: removeRecord,
+    updateRecord: updateRecord,
     createNewRecord: createNewRecord,
+    assignTaskForRecord: assignTaskForRecord,
+    removeTaskFromRecord: removeTaskFromRecord,
+    createNewRecordForProcrastinatedTask: createNewRecordForProcrastinatedTask,
+
+    // Task Related
     getRecordsByTaskIdNoSync: getRecordsByTaskIdNoSync,
+    getRecordsByTaskId: getRecordsByTaskId,
+    getRelatedRecordsOfTask: getRelatedRecordsOfTask,
+    
+    // By Date
     getRecordsByDateRange: getRecordsByDateRange,
     getRecordNonTaskByDateNoSync: getRecordNonTaskByDateNoSync,
+    getRecordByDateNoSync: getRecordByDateNoSync,
+    getRecordByDate:getRecordByDate,
+    getMoreRecordsByDate: getMoreRecordsByDate,
+    getRecordsOfTaskByDateNoSync: getRecordsOfTaskByDateNoSync,
+
+    // Entries
+    getDiaryEntriesByDate: getDiaryEntriesByDate,
+
+    // Notes
+    getNotesByDate: getNotesByDate,
+    getNotesByTaskId: getNotesByTaskId,
+
+    // Subtasks
+    getSubTasksByTaskId: getSubTasksByTaskId,
+
+    // Others
+    getItemByName: getItemByName,
+    getRecordById: getRecordById,
   };
 
+
+  // MARK: get by date
   function getRecordByDate(date) {
     return $q(function(resolve, reject) {
       getRecordsByDateRange(date, date).then(function(data) {
@@ -953,9 +1358,22 @@ function RecordService($resource, $rootScope, mergeRecord, helper, TaskService, 
   function getRecordByDateNoSync(date) {
     return records.getGroup({date: date});
   }
+
+  function getRecordsOfTaskByDateNoSync(taskId, date) {
+    return records.getGroup({date: date, task_id: taskId});
+  }
   
   function getRecordNonTaskByDateNoSync(date) {
     return records.getGroup({date: date, task_id: null});
+  }
+
+  function getMoreRecordsByDate(endDate, limit) {
+    return $q(function(resolve, reject) {
+      RecordAPI.getAllRecords({end_date: endDate.getTime(), limit: limit}).$promise.then(function(data) {
+        records.add(data);
+        resolve(data);
+      });
+    });
   }
 
 
@@ -963,10 +1381,19 @@ function RecordService($resource, $rootScope, mergeRecord, helper, TaskService, 
     return $q(function(resolve, reject) {
       RecordAPI.getAllRecords({
         start_date: time.getTheBeginningOfDate(start).getTime(), 
-        end_date: time.getTheEndOfDate(end.getTime()).getTime()
+        end_date: time.getTheEndOfDate(end).getTime()
       }).$promise.then(function(data) {
         records.add(data);
-        resolve(data);
+        resolve(records.getGroup({date: {'$gte': time.getTheBeginningOfDate(start), '$lte':  time.getTheEndOfDate(end)}}));
+      });
+    });
+  }
+
+  function getRecordsByTaskId(id) {
+    return $q(function(resolve, reject) {
+      RecordAPI.getAllRecords({task_id: id}).$promise.then(function(data) {
+        records.add(data);
+        resolve(records.getGroup({task_id: id}));
       });
     });
   }
@@ -974,6 +1401,16 @@ function RecordService($resource, $rootScope, mergeRecord, helper, TaskService, 
   function getRecordsByTaskIdNoSync(id) {
     return records.getGroup({task_id: id});
   }
+
+  function getRecordById(id) {
+    return $q(function(resolve, reject) {
+      RecordAPI.get({recordId: id}).$promise.then(function(data) {
+        records.add(data);
+        resolve(data);
+      });
+    });
+  }
+
 
   function createNewRecord (newRecord) {
     return $q(function(resolve, reject) {
@@ -999,12 +1436,14 @@ function RecordService($resource, $rootScope, mergeRecord, helper, TaskService, 
   function getAllRecords() {
     return records.getAll();
   }
+
   function updateRecord(recordToBeUpdated) {
     records.add(recordToBeUpdated);
     RecordAPI.updateRecord({recordId: recordToBeUpdated._id}, recordToBeUpdated, function(data) {
     });
     $rootScope.$broadcast(CONSTS.EVENT_SOME_RECORDS_UPDATED_OR_ADDED, recordToBeUpdated);
   }
+
   function removeRecord(recordToBeRemoved) {
     records.remove(recordToBeRemoved);
     RecordAPI.deleteRecord({recordId: recordToBeRemoved._id}, function(data) {
@@ -1014,13 +1453,39 @@ function RecordService($resource, $rootScope, mergeRecord, helper, TaskService, 
   }
 
 
+  function createNewRecordForProcrastinatedTask(task) {
+    var newRecord = {
+      content: 'Procrastinated: "' + task.title + '"',
+      list_id: task.list_id, 
+      task_title: task.title,
+      is_diary_entry: true
+    }
+
+    if(task.is_subtask) {
+      newRecord.task_id = task.parent_task_id;
+      newRecord.subtask_id = task._id;
+    } else {
+      newRecord.task_id = task._id;
+    }
+
+    return createNewRecord(newRecord);
+  }
+
   function createNewRecordForDoneTask(task) {
     var newRecord = {
-      title: task.title,
-      task_id: task._id,
+      content: 'Done: "' + task.title + '"',
       list_id: task.list_id, 
+      task_title: task.title,
       duration: task.duration,
-      items: []
+      items: [],
+      is_diary_entry: true
+    }
+
+    if(task.is_subtask) {
+      newRecord.task_id = task.parent_task_id;
+      newRecord.subtask_id = task._id;
+    } else {
+      newRecord.task_id = task._id;
     }
 
     if(task.assigned_date && task.start_time) {
@@ -1128,105 +1593,95 @@ function RecordService($resource, $rootScope, mergeRecord, helper, TaskService, 
     var record = this.getRecordByTaskId(id);
     this.removeRecord(record);
   }
+
+  function getRelatedRecordsOfTask(task) {
+    return $q(function(resolve, reject) {
+      relatedAPI.query({action: CONSTS.SERVER_ACTION_RELATED_TASK, task_id: task._id}, function(data) {
+        records.add(data);
+        resolve(data); // !! have no idea about group of this 
+      });
+    });
+  }
+
+  // MARK: CRUD
+  function assignTaskForRecord(task, record) {
+    record.task_id = task._id;
+    record.color = task.color;
+    record.list_id = task.list_id; 
+    record.task_title = task.title;
+
+    return updateRecord(record);
+  }
+
+  function removeTaskFromRecord(record) {
+    record.task_id = null;
+    record.color = null;
+    record.list_id = null;
+    record.task_title = null;
+
+    return updateRecord(record);
+  }
+
+  // MARK: diary 
+  function getDiaryEntriesByDate(date) {
+    return $q(function(resolve, reject) {
+      getRecordsByDateRange(date, date).then(function(data) {
+        records.add(data);
+        resolve(records.getGroup({date: date, is_diary_entry: true}));
+      });
+    });
+  }
+
+  // MARK: note
+  function getNotesByDate (date) {
+    return $q(function(resolve, reject) {
+      getRecordsByDateRange(date, date).then(function(data) {
+        records.add(data);
+        resolve(records.getGroup({date: date, is_note: true}));
+      });
+    });
+  }
+
+  function getNotesByTaskId(id) {
+    return $q(function(resolve, reject) {
+      RecordAPI.getAllRecords({task_id: id, is_note: true}).$promise.then(function(data) {
+        records.add(data);
+        resolve(records.getGroup({task_id: id, is_note: true}));
+      });
+    });
+  }
+
+  // MARK: subtasks
+  function getSubTasksByTaskId(id) {
+    return $q(function(resolve, reject) {
+      RecordAPI.getAllRecords({task_id: id, is_subtask: true}).$promise.then(function(data) {
+        records.add(data);
+        resolve(records.getGroup({task_id: id}));
+      });
+    });
+  }
 };
 
 })();
 
 (function() {
   'use strict';
-  angular.module('yodacore').factory('yodacore.sessionService', Session); 
-  Session.$inject = ['$window'];
-  function Session($window) {
-    var SESSION_KEY = 'sesion_id';
-    var sessionId = getSessionIdFromStorage();
 
+  angular.module('yodacore').factory('yodacore.recordProcessService', RecordProcessService); 
+
+  RecordProcessService.$inject = [];
+  function RecordProcessService() {
     return {
-      getSessionId: getSessionId,
-      setSessionId: setSessionId
+      sortRecordByDate: sortRecordByDate
     };
 
-
-    function getSessionIdFromStorage() {
-      return $window.localStorage[SESSION_KEY] || '' ;
-    }
-
-    function getSessionId() {
-      if(!sessionId) return getSessionIdFromStorage(); 
-      return sessionId; 
-    }
-
-    function setSessionId(id) {
-      sessionId = id;
-      $window.localStorage[SESSION_KEY] = sessionId;
-    }
-  };
-})();
-
-
-(function() {
-'use strict';
-
-angular.module('yodacore').factory('yodacore.userDataService', UserDataService);
-
-UserDataService.$inject = ['$resource', 'yodacore.CONSTS', 'yodacore.sessionService', '$q'];
-function UserDataService($resource, CONSTS, SessionService, $q){
-  // MARK: Service variables
-  var userProfileAPI =  $resource(CONSTS.ROOT_URL + '/user/profile', {}, {
-    updateProfile: {method: 'PUT'}
-  });
-
-  var userSession = $resource(CONSTS.ROOT_URL + '/auth/users/session', {}, {
-    login: {method: 'POST'}
-  });
-
-  var userData = null;
-
-
-  // MARK: Share services
-  return {
-    login: login, 
-    getProfile: getProfile,
-    updateCurrentPage: updateCurrentPage
-  };
-
-  // MARK: Service functions 
-  function login(email, password) {
-    return $q(function(resolve, reject) {
-      userSession.login({email: email, password: password}).$promise.then(function(result) {
-        if(result.success == true) {
-          SessionService.setSessionId(result.session_id);
-        }
-
-        resolve(result); 
+    function sortRecordByDate(records) {
+      records.sort(function(a,b) {
+        return (new Date(b.start_time)).getTime() - (new Date(a.start_time)).getTime();
       });
-    });
+    }
   }
-
-  function getProfile() {
-    return $q(function(resolve, reject) {
-      userProfileAPI.get(function(user) {
-        userData = user;
-        resolve(user);
-      });
-    })
-  }
-
-  function updateCurrentPage(page) {
-    if(!userData) return ; 
-    userData.current_page = page; 
-    updateProfile();
-  }
-
-  // MARK: common functions
-  function updateProfile() {
-    return userProfileAPI.updateProfile(userData).$promise;
-  }
-
-};
-
 })();
-
-
 
 'use strict' 
 
@@ -1485,7 +1940,7 @@ TaskDataService.$inject = ['$resource', '$rootScope', 'yodacore.mergeTask', 'yod
 
 function TaskDataService($resource, $rootScope, mergeTask, helper, $q, time, CONSTS, superCache, SessionService) {
   var tasks = mergeTask(); 
-  var TaskAPI = $resource(CONSTS.ROOT_URL + '/task/:taskId', {taskId: '@id', session_id: SessionService.getSessionId()}, {
+  var TaskAPI = $resource(CONSTS.ROOT_URL + '/task/:customAPI/:taskId', {taskId: '@id', session_id: SessionService.getSessionId()}, {
       createNewTask: {method: 'POST'},
       getAllTasks: {
         method: 'GET', 
@@ -1515,38 +1970,55 @@ function TaskDataService($resource, $rootScope, mergeTask, helper, $q, time, CON
     getTasksInGoalByDateRange: getTasksInGoalByDateRange,
     getTasksInGoalByListIdAndDateRange: getTasksInGoalByListIdAndDateRange,
 
-    cloneTask: cloneTask,
-    updateTaskRecurrence: updateTaskRecurrence,
+    // Section 
     getTasksOfSection: getTasksOfSection,
     getNonSectionTaskInList: getNonSectionTaskInList,
     getSectionsByListId: getSectionsByListId,
-    getFollowngTaskOf: getFollowngTaskOf,
-    getTaskNotDoneNotInGoal: getTaskNotDoneNotInGoal,
-    getCompletePercentage: getCompletePercentage,
-    getTaskById: getTaskById,
-    updateTaskQuantity: updateTaskQuantity,
-    getSubtasksNotDone: getSubtasksNotDone,
-    createBatchTasks: createBatchTasks,
-    createNewSubtasksOfTaskFromString: createNewSubtasksOfTaskFromString,
-    getSubTasksOf: getSubTasksOf,
-    batchUpdate: batchUpdate,
-    resetOrder: resetOrder,
-    getOldTasks: getOldTasks,
-    getInboxTasks: getInboxTasks,
+
+    // Order
     updateATaskOrderInList: updateATaskOrderInList,
+    resetOrder: resetOrder,
     getOrderNumberGivenNextTask: getOrderNumberGivenNextTask,
     getOrderNumber: getOrderNumber,
+
+    // List
     getNotDoneNotInGoalTaskByListId: getNotDoneNotInGoalTaskByListId,
     getNotDoneTaskByListIdNotSync: getNotDoneTaskByListIdNotSync,
     getNotDoneTaskByListId: getNotDoneTaskByListId,
     getTaskByListIdNoSync: getTaskByListIdNoSync,
     getTaskByListId: getTaskByListId,
+    getNotDoneTasksByListIdNoSubTask: getNotDoneTasksByListIdNoSubTask,
+
+    // CRUD
+    createNewTask: createNewTask,
+    updateTaskQuantity: updateTaskQuantity,
+    createBatchTasks: createBatchTasks,
+    createNewSubtasksOfTaskFromString: createNewSubtasksOfTaskFromString,
     removeTask: removeTask,
     updateTaskById: updateTaskById,
     updateTask: updateTask,
-    createNewTask: createNewTask,
+    batchUpdate: batchUpdate,
+    cloneTask: cloneTask,
+    updateTaskRecurrence: updateTaskRecurrence,
+    createNewSubtaskOfTask: createNewSubtaskOfTask,
+    markTaskAsDone: markTaskAsDone,
+    markTaskAsUnDone: markTaskAsUnDone,
+    procrastinateTask: procrastinateTask,
+
+    // Subtasks
+    getSubtasksNotDone: getSubtasksNotDone,
+    getSubTaskByTaskId: getSubTaskByTaskId,
+    
+    // Others
+    getOldTasks: getOldTasks,
+    getInboxTasks: getInboxTasks,
     getAllTasks: getAllTasks,
     fetchData: fetchData,
+    getFollowngTaskOf: getFollowngTaskOf,
+    getTaskNotDoneNotInGoal: getTaskNotDoneNotInGoal,
+    getCompletePercentage: getCompletePercentage,
+    getTaskById: getTaskById,
+    getSuggestedTasks: getSuggestedTasks
   };
 
 
@@ -1587,55 +2059,6 @@ function TaskDataService($resource, $rootScope, mergeTask, helper, $q, time, CON
     return tasks.getAll();
   }
 
-  function createNewTask(newTask) {
-    var that = this;
-
-    if(!newTask.color) newTask.color = CONSTS.DEFAULT_COLOR;
-    tasks.add(newTask);
-    $rootScope.$broadcast(CONSTS.EVENT_SOME_TASKS_UPDATED_OR_ADDED, newTask);
-
-    return $q(function(resolve, reject) {
-      TaskAPI.createNewTask(newTask, function(data) {
-        console.log('Data from new created task', data);
-        tasks.add(data);
-        resolve(data);
-      });
-    });
-  }
-
-  function updateTask(taskToBeUpdated) {
-    var deferred = $q.defer();
-
-    tasks.add(taskToBeUpdated);
-    TaskAPI.updateTask({taskId: taskToBeUpdated._id}, taskToBeUpdated, function(data) {
-      tasks.add(data);
-      deferred.resolve(data);
-    });
-
-    $rootScope.$broadcast(CONSTS.EVENT_SOME_TASKS_UPDATED_OR_ADDED, taskToBeUpdated);
-
-    return deferred.promise;
-  }
-
-  function updateTaskById(id, newData) {
-    var deferred = $q.defer();
-    TaskAPI.updateTask({taskId: id}, newData, function(data) {
-      tasks.add(data);
-      deferred.resolve(data);
-    });
-
-    return deferred.promise;
-  }
-
-  function removeTask(taskToBeRemoved) {
-    console.log('removing task', taskToBeRemoved);
-    taskToBeRemoved.is_delete = true;
-    tasks.remove(taskToBeRemoved);
-    $rootScope.$broadcast(CONSTS.EVENT_SOME_TASKS_UPDATED_OR_ADDED, taskToBeRemoved);
-    TaskAPI.deleteTask({taskId: taskToBeRemoved._id}, function(data) {
-      console.log('Data after removing task', data);
-    });
-  }
 
   function getTaskByListId(listId) {
     TaskAPI.getAllTasks({listId: listId}, function(data) {
@@ -1784,52 +2207,20 @@ function TaskDataService($resource, $rootScope, mergeTask, helper, $q, time, CON
     return tasks.getGroup({'date': {'$le': new Date()}});
   }
 
-  function resetOrder(tasks, orderType) {
-    var field = orderTypeAndDbField[orderType];
-    var interval = Math.floor(Math.pow(10, 9) / tasks.length); 
-    for(var i = 0, len = tasks.length; i < len; i++) {
-      var task = tasks[i];
-      task[field] = (i + 1) * interval;
-    }
 
-    this.batchUpdate(tasks);
-  }
-
-  function batchUpdate(tasks) {
-    var clone = tasks.slice();
-    for(var i = 0, len = clone.length; i < len; i++) {
-      var task = clone[i];
-      this.updateTask(task);
-    }
-  }
-
-  function getSubTasksOf(task) {
-    return tasks.getGroup({'parent_task_id': task._id});
-  }
-
-  function createNewSubtasksOfTaskFromString(str, task) {
-    var items = helper.parseHashtag(str);
-    var subtasks = [];
-    for(var i = 0, len = items.length; i < len; i++) {
-      var item = items[i];
-      subtasks.push({
-        title: item.matchedString,
-        parent_task_id: task._id,
-        item_name: item.itemName,
-        item_quantity: item.quantity,
-        item_unit: item.unit,
+  function getSubTaskByTaskId(id) {
+    return $q(function(resolve, reject) {
+      TaskAPI.getAllTasks({'parent_task_id': id}, function(data) {
+        tasks.add(data);
+        resolve(tasks.getGroup({'parent_task_id': id}));
       });
-    }
-
-    this.createBatchTasks(subtasks);
+    });
   }
 
-  function createBatchTasks(tasks) {
-    for(var i = 0, len = tasks.length; i < len; i++) {
-      var task = tasks[i];
-      this.createNewTask(task);
-    }
+  function getSubTaskByTaskIdNotSync(id) {
+    return tasks.getGroup({'parent_task_id': id});
   }
+
 
   function getSubtasksNotDone() {
     return tasks.getGroup({ is_done: false, parent_task_id: {'$neq': null}});
@@ -1955,6 +2346,129 @@ function TaskDataService($resource, $rootScope, mergeTask, helper, $q, time, CON
     return taskList;
   }
 
+
+  function getSuggestedTasks(title) {
+    return $q(function(resolve, reject) {
+      TaskAPI.getAllTasks({customAPI: 'suggest', title: title}).$promise.then(function(results) {
+        tasks.add(results);
+        resolve(results);
+      })
+    });
+
+  }
+
+  function getNotDoneTasksByListIdNoSubTask(id) {
+    return $q(function(resolve, reject) {
+      TaskAPI.getAllTasks({list_id: id, is_subtask: false, is_done: false}).$promise.then(function(results) {
+        tasks.add(results);
+        resolve(tasks.getGroup({list_id: id, is_subtask: false, is_done: false}));
+      })
+    });
+  }
+
+
+  // MARK: CRUD
+  function procrastinateTask(task) {
+    if(!task.is_recurring) {
+      task.assigned_date = null;
+      task.procastinated_dates.push(task.assigned_date);
+      task.is_procastinated = true;
+    } else {
+      task.recurring_done_dates.push(new Date()); 
+      task.procastinated_dates.push(task.assigned_date);
+    }
+
+    return updateTask(task);
+    
+  }
+
+  
+  function createNewSubtaskOfTask(newTitle, parentTask, tasks) { // at at the end of list (tasks)
+
+    var subtask = {
+      title: newTitle,
+      is_subtask: true,
+      parent_task_id: parentTask._id,
+      list_id: parentTask.list_id,
+      color: parentTask.color,
+    };
+
+    if(tasks) {
+      subtask.list_order_number = getOrderNumber(tasks.length === 0 ? null : tasks[tasks.length - 1], tasks, 'list');
+    }
+
+    return createNewTask(subtask);
+  }
+
+  function createNewTask(newTask) {
+    var that = this;
+
+    if(!newTask.color) newTask.color = CONSTS.DEFAULT_COLOR;
+    tasks.add(newTask);
+    $rootScope.$broadcast(CONSTS.EVENT_SOME_TASKS_UPDATED_OR_ADDED, newTask);
+
+    return $q(function(resolve, reject) {
+      TaskAPI.createNewTask(newTask, function(data) {
+        console.log('Data from new created task', data);
+        tasks.add(data);
+        resolve(data);
+      });
+    });
+  }
+
+  function updateTask(taskToBeUpdated) {
+    var deferred = $q.defer();
+
+    tasks.add(taskToBeUpdated);
+    TaskAPI.updateTask({taskId: taskToBeUpdated._id}, taskToBeUpdated, function(data) {
+      tasks.add(data);
+      deferred.resolve(data);
+    });
+
+    $rootScope.$broadcast(CONSTS.EVENT_SOME_TASKS_UPDATED_OR_ADDED, taskToBeUpdated);
+
+    return deferred.promise;
+  }
+
+  function updateTaskById(id, newData) {
+    var deferred = $q.defer();
+    TaskAPI.updateTask({taskId: id}, newData, function(data) {
+      tasks.add(data);
+      deferred.resolve(data);
+    });
+
+    return deferred.promise;
+  }
+
+  function removeTask(taskToBeRemoved) {
+    console.log('removing task', taskToBeRemoved);
+    taskToBeRemoved.is_delete = true;
+    tasks.remove(taskToBeRemoved);
+    $rootScope.$broadcast(CONSTS.EVENT_SOME_TASKS_UPDATED_OR_ADDED, taskToBeRemoved);
+    TaskAPI.deleteTask({taskId: taskToBeRemoved._id}, function(data) {
+      console.log('Data after removing task', data);
+    });
+  }
+
+  function resetOrder(tasks, orderType) {
+    var field = orderTypeAndDbField[orderType];
+    var interval = Math.floor(Math.pow(10, 9) / tasks.length); 
+    for(var i = 0, len = tasks.length; i < len; i++) {
+      var task = tasks[i];
+      task[field] = (i + 1) * interval;
+    }
+
+    this.batchUpdate(tasks);
+  }
+
+  function batchUpdate(tasks) {
+    var clone = tasks.slice();
+    for(var i = 0, len = clone.length; i < len; i++) {
+      var task = clone[i];
+      this.updateTask(task);
+    }
+  }
+
   function updateTaskRecurrence(taskToBeUpdated) {
     var deferred = $q.defer();
 
@@ -1978,6 +2492,66 @@ function TaskDataService($resource, $rootScope, mergeTask, helper, $q, time, CON
     };
     return clone;
   }
+
+  function createNewSubtasksOfTaskFromString(str, task) {
+    var items = helper.parseHashtag(str);
+    var subtasks = [];
+    for(var i = 0, len = items.length; i < len; i++) {
+      var item = items[i];
+      subtasks.push({
+        title: item.matchedString,
+        parent_task_id: task._id,
+        item_name: item.itemName,
+        item_quantity: item.quantity,
+        item_unit: item.unit,
+      });
+    }
+
+    this.createBatchTasks(subtasks);
+  }
+
+  function createBatchTasks(tasks) {
+    for(var i = 0, len = tasks.length; i < len; i++) {
+      var task = tasks[i];
+      this.createNewTask(task);
+    }
+  }
+
+  function markTaskAsDone(task, thisDate) {
+    if(task.is_recurring) {
+      var thisDate = thisDate || new Date();
+      task.recurring_done_dates.push(thisDate);
+
+    } else {
+      task.is_done = true;
+    }
+
+    return updateTask(task);
+  }
+  
+  function markTaskAsUnDone(task) {
+    task.is_done = false; 
+    return updateTask(task);
+  }
+
+  function markTaskAsDoneForADate(task, thisDate) {
+    var deferred = $q.defer();
+    if(task.is_recurring) {
+      thisDate = thisDate || new Date();
+      task.recurring_done_dates.push(thisDate);
+
+      TaskService.updateTask(task).then(function(updatedTask) {
+        deferred.resolve(updatedTask);
+      });
+
+      return deferred.promise;
+    } else {
+      task.is_done = true;
+
+      return TaskService.updateTask(task);
+    }
+
+  }
     
 };
 
@@ -1991,7 +2565,9 @@ function TaskDataService($resource, $rootScope, mergeTask, helper, $q, time, CON
 
     // MARK: return 
     return {
-      sortByStartTime: sortByStartTime
+      sortByStartTime: sortByStartTime,
+      sortByOrderInDate: sortByOrderInDate,
+      sortByOrderInList: sortByOrderInList
     };
 
 
@@ -1999,6 +2575,20 @@ function TaskDataService($resource, $rootScope, mergeTask, helper, $q, time, CON
     function sortByStartTime(tasks) {
       tasks.sort(function(a, b) {
         return time.convertTo24h(new Date(a.start_time)) - time.convertTo24h(new Date(b.start_time));
+      });
+    }
+
+    function sortByOrderInDate(tasks) {
+      if(!tasks) return;
+      tasks.sort(function(a, b) {
+        return a.date_list_order_number - b.date_list_order_number;
+      });
+    }
+
+    function sortByOrderInList(tasks) {
+      if(!tasks) return;
+      tasks.sort(function(a, b) {
+        return a.list_order_number - b.list_order_number;
       });
     }
   }
@@ -2009,9 +2599,9 @@ function TaskDataService($resource, $rootScope, mergeTask, helper, $q, time, CON
 
 angular.module('yodacore').factory('yodacore.taskRecordService', TaskRecordService);
 
-TaskRecordService.$inject = ['$resource', 'yodacore.time', 'yodacore.recordDataService', 'yodacore.taskDataService', 'yodacore.helper', 'yodacore.TASK', '$q', 'yodacore.taskProcessService']
+TaskRecordService.$inject = ['$resource', 'yodacore.time', 'yodacore.recordDataService', 'yodacore.taskDataService', 'yodacore.helper', 'yodacore.TASK', '$q', 'yodacore.taskProcessService', 'yodacore.CONSTS']
 
-function TaskRecordService($resource, time, RecordService, TaskService, helper, TASK, $q, TaskProcess) {
+function TaskRecordService($resource, time, RecordService, TaskService, helper, TASK, $q, TaskProcess, CONSTS) {
 
   return {
     getCurrentTaskAndRecords                                                       : getCurrentTaskAndRecords,
@@ -2020,6 +2610,8 @@ function TaskRecordService($resource, time, RecordService, TaskService, helper, 
     createRecordFromData                                                           : createRecordFromData,
     predictPastDurationAndStartTimeOfItem                                          : predictPastDurationAndStartTimeOfItem,
     markTaskAsDone                                                                 : markTaskAsDone,
+
+    getCurrentTaskForCurrentNote: getCurrentTaskForCurrentNote
   };
 
   function getCurrentTaskAndRecords() {
@@ -2037,11 +2629,11 @@ function TaskRecordService($resource, time, RecordService, TaskService, helper, 
 
         for(var i = 0, len = tasks.length; i < len; i++) {
           var task = tasks[i];
-          if(!task.start_time || !task.duration) continue;
+          if(!task.start_time ) continue;
           var start = new Date(task.start_time); 
-          var end = new Date(start.getTime() + task.duration * 60 * 1000); 
+          var end = new Date(start.getTime() + (task.duration ? task.duration : 0) * 60 * 1000); 
           var start24 = convertTo24h(start);
-          var end24 = convertTo24h(end);
+          var end24 = convertTo24h(end, start);
 
           if(now24 > start24 && now24 > end24 ) prevTask = task; // get last of this kind 
 
@@ -2069,36 +2661,11 @@ function TaskRecordService($resource, time, RecordService, TaskService, helper, 
 
 
   function markTaskAsDone(task, thisDate) {
-    var deferred = $q.defer();
-    if(task.is_recurring) {
-      thisDate = thisDate || new Date();
-      task.recurring_done_dates.push(thisDate);
-
-      var clone = TaskService.cloneTask(task);
-      clone.is_done = true;
-      clone.assigned_date = thisDate;
-
-      if(clone.assigned_date && clone.start_time === null) {
-        var data = this.predictPastDurationAndStartTimeOfItem(clone, RecordService.getRecordByDateNoSync(new Date(clone.assigned_date)), new Date(), 8, 24);
-        clone.start_time = data.startTime;
-        clone.duration = data.duration;
-      }
-
-
-      TaskService.updateTask(task);
-      TaskService.createNewTask(clone).then(function(data) {
-        deferred.resolve(data);
-      });;
-
-      return deferred.promise;
+    if(task.is_done === false) {
+      TaskService.markTaskAsDone(task, thisDate).then(function(task) { });
+      RecordService.createNewRecordForDoneTask(task, thisDate);
     } else {
-      task.is_done = true;
-      if(task.assigned_date && task.start_time === null) {
-        var data = this.predictPastDurationAndStartTimeOfItem(task, RecordService.getRecordByDateNoSync(new Date(task.assigned_date)), new Date(), 8, 24);
-        task.start_time = data.startTime;
-        task.duration = data.duration;
-      }
-      return TaskService.updateTask(task);
+      TaskService.markTaskAsUnDone(task, thisDate).then(function(task) { });
     }
 
   }
@@ -2446,10 +3013,59 @@ function TaskRecordService($resource, time, RecordService, TaskService, helper, 
     TaskService.updateTask(task);
   }
 
+  function getCurrentTaskForCurrentNote() {
+    return $q(function(resolve, reject) {
+      var currentTask, records, upcomingTask, startTime, duration;
+      getCurrentTaskAndRecords().then(function(result) {
+        console.log('result', result);
+        var prevTask = result.prevTask;
+        var nextTask = result.nextTask;
+        currentTask = result.currentTask;
+        records = result.records;
+
+        if(currentTask) {
+          startTime = currentTask.start_time;
+          duration = currentTask.duration;
+        } else {
+          if(prevTask) {
+            var prevStart = new Date(prevTask.start_time);
+            startTime = new Date(prevStart.getTime() + prevTask.duration * 60 * 1000); 
+          } else {
+            startTime = time.getTheBeginningOfDate(new Date());
+          }
+
+          if(nextTask) {
+            var nextStart = new Date(nextTask.start_time);
+            duration = Math.round((time.convertTo24h(nextStart) - time.convertTo24h(startTime)) * 60); 
+            upcomingTask = nextTask;
+          } else {
+            duration = Math.round((time.convertTo24h(time.getTheEndOfDate(new Date())) - time.convertTo24h(startTime)) * 60); 
+          }
+        }
+
+        var result = {
+          upcomingTask: upcomingTask,
+          currentTask: currentTask,
+          records: records,
+          startTime: startTime,
+          duration: duration, 
+        };
+
+        console.log('result vm', result);
+        resolve(result);
+      });
+    });
+  }
+
   
   // MARK: common functions 
-  function convertTo24h(date) { // should always keep the precision
-    return date.getHours() + date.getMinutes()/60 + date.getSeconds()/3600;
+  function convertTo24h(date, referenceDate) { // should always keep the precision
+    if(referenceDate) {
+      var begin = time.getTheBeginningOfDate(referenceDate);
+      return (date.getTime() - begin.getTime()) / (1000 * 60 * 60 );
+    } else {
+      return date.getHours() + date.getMinutes()/60 + date.getSeconds()/3600;
+    }
   }
 
   function getMaxOfArray(numArray) {
@@ -2458,6 +3074,420 @@ function TaskRecordService($resource, time, RecordService, TaskService, helper, 
 
 };
 
+})();
+
+(function() {
+  'use strict';
+  angular.module('yodacore').factory('yodacore.sessionService', Session); 
+  Session.$inject = ['$window'];
+  function Session($window) {
+    var SESSION_KEY = 'sesion_id';
+    var sessionId = getSessionIdFromStorage();
+
+    return {
+      getSessionId: getSessionId,
+      setSessionId: setSessionId
+    };
+
+
+    function getSessionIdFromStorage() {
+      return $window.localStorage[SESSION_KEY] || '' ;
+    }
+
+    function getSessionId() {
+      if(!sessionId) return getSessionIdFromStorage(); 
+      return sessionId; 
+    }
+
+    function setSessionId(id) {
+      sessionId = id;
+      $window.localStorage[SESSION_KEY] = sessionId;
+    }
+  };
+})();
+
+
+(function() {
+'use strict';
+
+angular.module('yodacore').factory('yodacore.userDataService', UserDataService);
+
+UserDataService.$inject = ['$resource', 'yodacore.CONSTS', 'yodacore.sessionService', '$q'];
+function UserDataService($resource, CONSTS, SessionService, $q){
+  // MARK: Service variables
+  var userProfileAPI =  $resource(CONSTS.ROOT_URL + '/user/profile', {}, {
+    updateProfile: {method: 'PUT'}
+  });
+
+  var userSession = $resource(CONSTS.ROOT_URL + '/auth/users/session', {}, {
+    login: {method: 'POST'}
+  });
+
+  var userData = null;
+
+
+  // MARK: Share services
+  return {
+    login: login, 
+    getProfile: getProfile,
+    updateCurrentPage: updateCurrentPage
+  };
+
+  // MARK: Service functions 
+  function login(email, password) {
+    return $q(function(resolve, reject) {
+      userSession.login({email: email, password: password}).$promise.then(function(result) {
+        if(result.success == true) {
+          SessionService.setSessionId(result.session_id);
+        }
+
+        resolve(result); 
+      });
+    });
+  }
+
+  function getProfile() {
+    return $q(function(resolve, reject) {
+      userProfileAPI.get(function(user) {
+        userData = user;
+        resolve(user);
+      });
+    })
+  }
+
+  function updateCurrentPage(page) {
+    if(!userData) return ; 
+    userData.current_page = page; 
+    updateProfile();
+  }
+
+  // MARK: common functions
+  function updateProfile() {
+    return userProfileAPI.updateProfile(userData).$promise;
+  }
+
+};
+
+})();
+
+
+
+(function() {
+  'use strict';
+
+  angular.module('yodacore').controller('yodacore.createEntryCtrl', CreateEntryCtrl); 
+
+  CreateEntryCtrl.$inject = ['yodacore.recordDataService', '$scope', 'yodacore.CONSTS'];
+  function CreateEntryCtrl(RecordService, $scope, CONSTS) {
+    var vm = this; 
+    var options;
+    // MARK: bindable variables
+    vm.newContent = '';
+    vm.currentTask = null;
+
+    // MARK: bindable functions
+    vm.createNewEntry = createNewEntry;
+
+    initWatches();
+
+    function init() {
+      options = $scope.createEntryOptions;
+      console.log('options', options);
+
+      if(options) {
+        vm.currentTask = options.task;
+      }
+    }
+
+    function initWatches() {
+      $scope.$watch('createEntryOptions', function() {
+        init();
+      });
+    }
+
+    // MARK: initialization
+
+    // MARK: functions
+    function createNewEntry() {
+      var newEntry = {
+        title: '',
+        content: vm.newContent,
+        start_time: new Date()
+      };
+
+      if(options.type === CONSTS.TYPE_CREATE_ENTRY_IN_TASK && vm.currentTask) {
+        newEntry.task_id = vm.currentTask._id;
+        newEntry.task_title = vm.currentTask.title;
+        newEntry.color = vm.currentTask.color;
+      }
+
+      RecordService.createNewRecord(newEntry);
+
+      vm.newContent = '';
+    }
+  }
+})();
+
+
+(function() {
+  'use strict';
+
+  angular.module('yodacore').controller('yodacore.itemEntryCtrl', ItemEntryCtrl); 
+
+  ItemEntryCtrl.$inject = ['yodacore.CONSTS', '$scope', 'yodacore.recordDataService'];
+  function ItemEntryCtrl(CONSTS, $scope, RecordService) {
+    var vm = this; 
+    // MARK: bindable variables
+    vm.entry = null;
+
+    // MARK: bindable functions
+    vm.removeEntry = removeEntry;
+    vm.removeTaskFromEntry = removeTaskFromEntry;
+
+    // MARK: initialization
+    init();
+    initWatches();
+
+    // MARK: functions
+    function init() {
+      vm.entry = $scope.entry;
+    }
+
+    function initWatches() {
+      $scope.$on(CONSTS.EVENT_TYPING_PAUSE, function(evt, entry) {
+        vm.entry && RecordService.updateRecord(vm.entry); 
+        evt.stopPropagation();
+      });
+
+      $scope.$on(CONSTS.EVENT_TASK_TYPEAHEAD_SELECTED, function(evt, task) {
+        console.log('task, entry', task);
+
+        updateTaskForEntry(task);
+        evt.stopPropagation();
+      });
+    }
+
+
+    function updateTaskForEntry(task) {
+      RecordService.assignTaskForRecord(task, vm.entry);
+    }
+
+
+    function removeEntry() {
+      RecordService.removeRecord(vm.entry);
+    }
+
+    function removeTaskFromEntry() {
+      RecordService.removeTaskFromRecord(vm.entry);
+    }
+  }
+})();
+
+
+
+(function() {
+  'use strict';
+
+  angular.module('yodacore').controller('yodacore.listEntriesCtrl', ListEntriesCtrl); 
+
+  ListEntriesCtrl.$inject = ['yodacore.CONSTS', '$scope', 'yodacore.recordDataService', 'yodacore.time', 'yodacore.recordProcessService'];
+  function ListEntriesCtrl(CONSTS, $scope, RecordService, time, RecordProcess) {
+    var vm = this; 
+    var options;
+    var currentTask;
+    // MARK: bindable variables
+    vm.thisDate = null;
+    vm.groupByTask = false;
+    vm.shouldLoadMore = false;
+    vm.groups = [];
+    vm.haveMoreDataToLoad = true;
+
+    // should be initialized as null for the sake of currentDate variable in groupByDate function
+    vm.currentLoadedDate = null;
+
+    // MARK: bindable functions
+    vm.loadMore = loadMore;
+
+    // MARK: initialization
+    initWatches();
+
+    // MARK: functions
+    function init() {
+      options = $scope.listEntriesOptions; 
+      console.log('current options', options);
+      if(options) {
+        vm.groupByTask = options.groupByTask ? true : false;
+        vm.shouldLoadMore = options.shouldLoadMore ? true : false;
+
+
+        if(options.type === CONSTS.TYPE_ENTRY_BY_DATE_RANGE) {
+          var startDate = options.startDate;
+          var endDate = options.endDate;
+          vm.groups = [getTodayGroup()];
+          getEntriesByDateRange(startDate, endDate);
+          initCreateEntryInDateOptions();
+        }
+
+        else if(options.type === CONSTS.TYPE_ENTRY_BY_TASK) {
+          if(!options.task) return ; // invalide options
+          vm.groups = [getTodayGroup()];
+          getEntriesByTask(options.task);
+          initCreateEntryInTaskOptions();
+        }
+        else {
+          console.error('This type is not handled yet', options.type);
+        }
+
+      } 
+      
+      // default option
+      else {
+      }
+
+      
+    }
+
+    function initWatches() {
+      $scope.$watch('listEntriesOptions', function() {
+        init();
+      });
+    }
+
+    function initCreateEntryInDateOptions() {
+      $scope.createEntryOptions = {
+        type: CONSTS.TYPE_CREATE_ENTRY_IN_DATE,
+      };
+    }
+
+    function initCreateEntryInTaskOptions() {
+      $scope.createEntryOptions = {
+        type: CONSTS.TYPE_CREATE_ENTRY_IN_TASK,
+        task: options.task,
+      };
+    }
+
+    function getEntriesOfThisDate() {
+      RecordService.getRecordByDate(vm.thisDate).then(function(records) {
+        appendToGroups(grouping(records));
+      });
+    }
+
+    function getEntriesByDateRange(start, end) {
+      RecordService.getRecordsByDateRange(start, end).then(function(records) {
+        appendToGroups(grouping(records));
+      });
+    }
+
+    function getEntriesByTask(task) {
+      RecordService.getRecordsByTaskId(task._id).then(function(records) {
+        appendToGroups(grouping(records));
+      });
+    }
+
+    function grouping(entries) {
+      return groupByDate(entries);
+    }
+
+    function appendToGroups(groups) {
+      for(var i = 0, len = groups.length; i < len; i++) {
+        vm.groups.push(groups[i]);
+      }
+    }
+
+    function getMoreEntries() {
+      RecordService.getMoreRecordsByDate(vm.currentLoadedDate, CONSTS.MAX_RECORD_PER_LOAD_MORE).then(function(records) {
+        if(records.length === 0) vm.haveMoreDataToLoad = false;
+        appendToGroups(grouping(records));
+        $scope.$broadcast('scroll.infiniteScrollComplete');
+      });
+
+    }
+
+    // by default we want today group already in group list
+    function getTodayGroup() {
+      var date = new Date();
+
+      var currentGroup = {
+        is_group: true,
+        time: date,
+        items: (options.type === CONSTS.TYPE_ENTRY_BY_TASK) ?  RecordService.getRecordsOfTaskByDateNoSync(options.task._id, date) : RecordService.getRecordByDateNoSync(date),
+        groupByTask: vm.groupByTask
+      };
+      vm.currentLoadedDate = date;
+
+      return currentGroup;
+    }
+
+    /**
+     * @pre: all neccessary entries already retrieved, using all nosync methods
+     */
+    function groupByDate(entries) {
+      var groups = []; 
+      var currentDate = vm.currentLoadedDate;
+      var currentGroup = null;
+      RecordProcess.sortRecordByDate(entries)
+
+      for(var i = 0, len = entries.length; i < len; i++) {
+        var entry = entries[i];
+        var startTime  = new Date(entry.start_time);
+        if(time.areDifferentDates(startTime, currentDate)) {
+          currentDate = startTime; 
+          currentGroup = {
+            is_group: true,
+            time: startTime,
+            title: 'group ' + startTime.toTimeString(),
+            items: (options.type === CONSTS.TYPE_ENTRY_BY_TASK) ?  RecordService.getRecordsOfTaskByDateNoSync(options.task._id, currentDate) : RecordService.getRecordByDateNoSync(currentDate),
+            groupByTask: vm.groupByTask
+          };
+
+          groups.push(currentGroup);
+        }
+
+      }
+
+      if(entries.length > 0) {
+        vm.currentLoadedDate = new Date(entries[entries.length - 1].start_time);
+      }
+
+      console.log('group by dates current loaded', groups, vm.currentLoadedDate);
+
+      return groups;
+    }
+
+    function loadMore() {
+      getMoreEntries();
+    }
+  }
+})();
+
+
+(function() {
+  'use strict';
+
+  angular.module('mdiary').controller('mdiary.detailEntryCtrl', DetailEntryCtrl); 
+
+  DetailEntryCtrl.$inject = ['$stateParams', 'yodacore.recordDataService', '$scope'];
+  function DetailEntryCtrl($stateParams, RecordService, $scope) {
+    var vm = this; 
+
+    // MARK: bindable variables
+    vm.entry = null;
+    
+    // MARK: bindable functions
+
+    // MARK: initialization
+    init();
+
+    // MARK: functions
+    function init() {
+      if($stateParams.id) {
+        RecordService.getRecordById($stateParams.id).then(function(data) {
+          vm.entry = data;
+          $scope.entry = data;
+        });
+      }
+    }
+  }
 })();
 
 (function() {
@@ -2474,6 +3504,43 @@ function TaskListCtrl(UserService, $state) {
 })();
 
 
+
+(function() {
+'use strict';
+
+angular.module('muser').controller('muser.loginCtrl', LoginCtrl); 
+                                   
+LoginCtrl.$inject = ['yodacore.userDataService', '$state'];
+                                   
+function LoginCtrl (UserService, $state) { 
+  var vm = this; 
+
+  // MARK: Bindable variable
+  // vm.email = 'minh.truonganh7@gmail.com';
+  vm.email = 'minh@iastate.edu';
+  vm.password = '123456'; 
+  vm.message = {};
+
+  // MARK: Bindable functions
+  vm.login = login; 
+
+  console.log('vm', vm);
+  // MARK: Functions 
+  function login() {
+    console.log('fdsafds');
+    UserService.login(vm.email, vm.password).then(function(result) {
+      vm.message.content = result.message; 
+      vm.message.success = result.success;
+
+      if(result.success) {
+        $state.go('main.takeNote');
+      }
+
+    });
+  }
+};
+
+})();
 
 (function() {
 'use strict';
@@ -2502,64 +3569,77 @@ function MainCtrl() {
     vm.task = null;
     vm.upcomingTask = null;
     vm.records = [];
+    vm.todayRecords = [];
     vm.note = ''; 
     vm.defaultColor = CONSTS.DEFAULT_COLOR;
     vm.startTime = null;
     vm.duration = null; 
+    vm.currentDate = new Date();
 
     // MARK: bindable functions
     vm.addNote = addNote;
     vm.doRefresh = doRefresh;
+    vm.removeNote = removeNote;
 
     // MARK: initialization
-    getCurrentTask();
+    init();
 
     // MARK: functions
+
+    function init() {
+      getCurrentTask();
+    }
+
+    function initListEntriesOptions() {
+      $scope.listEntriesOptions = {
+        type: CONSTS.TYPE_ENTRY_BY_DATE_RANGE,
+        endDate: vm.currentDate,
+        shouldLoadMore: true,
+        groupByTask: true,
+        startDate: new Date(vm.currentDate.getTime() - 24 * 60 * 60 *1000)
+      };
+      
+    }
+
     function getCurrentTask() {
-      TaskRecordService.getCurrentTaskAndRecords().then(function(result, a) {
-        console.log('a', a, result);
-        var task = result.currentTask;
-        var records = result.records;
-        var prevTask = result.prevTask;
-        var nextTask = result.nextTask;
+      TaskRecordService.getCurrentTaskForCurrentNote().then(function(result) {
+        vm.task = result.currentTask;
+        vm.startTime = result.startTime;
+        vm.duration = result.duration;
+        vm.upcomingTask = result.upcomingTask;
 
-        vm.task = task;
-        vm.records = records;
-
-        if(task) {
-          vm.startTime = task.start_time;
-          vm.duration = task.duration;
-        } else {
-          if(prevTask) {
-            var prevStart = new Date(prevTask.start_time);
-            vm.startTime = new Date(prevStart.getTime() + prevTask.duration * 60 * 1000); 
-          } else {
-            vm.startTime = time.getTheBeginningOfDate(new Date());
-          }
-
-          if(nextTask) {
-            var nextStart = new Date(nextTask.start_time);
-            vm.duration = Math.round((time.convertTo24h(nextStart) - time.convertTo24h(vm.startTime)) * 60); 
-            vm.upcomingTask = nextTask;
-          } else {
-            vm.duration = Math.round((time.convertTo24h(time.getTheEndOfDate(new Date())) - time.convertTo24h(vm.startTime)) * 60); 
-          }
-
-
-        }
-
+        console.log('current vm', vm, result);
         $scope.$broadcast('scroll.refreshComplete');
+        initListEntriesOptions();
       });
+
+    }
+
+    function getNotesForTask() {
+
+      if(vm.task) {
+        RecordService.getNotesByTaskId(vm.task._id).then(function(notes) {
+          vm.records = notes;
+        });
+      }         
+
+      RecordService.getNotesByDate(new Date()).then(function(notes) {
+        vm.todayRecords = notes;
+      })
     }
 
     function addNote() {
       var newRecord = {
-        title: vm.note,
       };
+
       if(vm.task) {
         newRecord.task_id = vm.task._id;
         newRecord.list_id = vm.task.list_id;
       }
+
+      newRecord.is_note = true;
+      newRecord.content = vm.note;
+
       RecordService.createNewRecord(newRecord).then(function() {
       });
       vm.note = '';
@@ -2567,6 +3647,10 @@ function MainCtrl() {
 
     function doRefresh() {
       getCurrentTask();
+    }
+
+    function removeNote(note) {
+      RecordService.removeRecord(note);
     }
   }
 })();
@@ -2623,96 +3707,52 @@ angular.module('yodacore').constant('yodacore.CONSTS', {
   EVENT_SOME_RECORDS_UPDATED_OR_ADDED: 'some-records-updated-or-added',
   EVENT_SOME_LISTS_UPDATED_OR_ADDED: 'some-lists-updated-or-added',
   EVENT_LIST_DELETED: 'list-deleted',
+  EVENT_LIST_SELECTED: 'list-selected',
+  EVENT_TYPING_PAUSE: 'typing-pause',
+  
+  EVENT_CREATE_NEW_TASK_NEXT_TO: 'task-create-new-task-next-to',
+  EVENT_TASK_TYPEAHEAD_SELECTED: 'task-typehead-selected',
+  EVENT_TASK_MOVE_UP_A_TASK: 'move-up-a-task',
+  EVENT_TASK_MOVE_DOWN_A_TASK: 'move-down-a-task',
+  EVENT_ITEM_DROPPED_ON_ITEM: 'task-dropped-on-task',
+  EVENT_TASK_SELECTED : 'task-is-selected',
+  EVENT_CURRENT_TASK_OF_LIST_CHANGE: 'current-task-of-list-change', // for outer controller of list to know
+  EVENT_NO_CURRENT_TASK: 'no-current-task', // for outer controller of list to know
+
+  EVENT_CHANGE_TASK_DURATION: 'change-task-duration',
+  EVENT_CHANGE_TASK_START_TIME: 'change-task-start-time',
+
+  SERVER_ACTION_RELATED_TASK: 'relatedToTask',
+
+  TYPE_NOTE_CURRENT_TASK: 'noteOfCurrentTask',
+  TYPE_NOTE_TODAY: 'noteOfToday',
+  TYPE_NOTE_RELATED_TO_TASK: 'noteRelatedToTask',
+
+  TYPE_TASK_LIST_BY_DATE: 'tasksByDate',
+  TYPE_SUBTASK_LIST_OF_TASK: 'subtasksOfTask',
+  TYPE_TASK_LIST_BY_LIST: 'tasksByList',
+
+  TYPE_CREATE_TASK_IN_DATE: 'createTaskInDate',
+  TYPE_CREATE_TASK_IN_LIST: 'createTaskInList',
+  TYPE_CREATE_SUBTASK_OF_TASK: 'createSubtaskOfTask',
+
+  TYPE_CREATE_ENTRY_IN_DATE: 'createEntryInDate',
+  TYPE_CREATE_ENTRY_IN_TASK: 'createEntryInTask',
+
+  TYPE_ENTRY_BY_DATE: 'entriesByDate',
+  TYPE_ENTRY_BY_DATE_RANGE: 'entriesByDateRange',
+  TYPE_ENTRY_BY_TASK: 'entriesByTask',
+
   ITEM_TYPE_TASK: 'task',
   ITEM_TYPE_RECORD: 'record',
+
+  MAX_RECORD_PER_LOAD_MORE: 20,
+
   DEFAULT_COLOR: '#36b37a',
-  CACHE_FLUSH_INTERVAL: 120, // in seconds
+  CACHE_FLUSH_INTERVAL: 15, // in seconds
 
   ROOT_URL: '', // this will not be changed after its first set 
 });
-
-(function() {
-'use strict';
-
-angular.module('muser').controller('muser.loginCtrl', LoginCtrl); 
-                                   
-LoginCtrl.$inject = ['yodacore.userDataService', '$state'];
-                                   
-function LoginCtrl (UserService, $state) { 
-  var vm = this; 
-
-  // MARK: Bindable variable
-  vm.email = 'minh.truonganh7@gmail.com';
-  vm.password = '123456'; 
-  vm.message = {};
-
-  // MARK: Bindable functions
-  vm.login = login; 
-
-  console.log('vm', vm);
-  // MARK: Functions 
-  function login() {
-    console.log('fdsafds');
-    UserService.login(vm.email, vm.password).then(function(result) {
-      vm.message.content = result.message; 
-      vm.message.success = result.success;
-
-      if(result.success) {
-        $state.go('main.taskDiary');
-      }
-
-    });
-  }
-};
-
-})();
-
-angular.module('yodacore')
-.filter('cut', function () {
-  return function (value, wordwise, max, tail) {
-    if (!value) return '';
-
-    max = parseInt(max, 10);
-    if (!max) return value;
-    if (value.length <= max) return value;
-
-    value = value.substr(0, max);
-    if (wordwise) {
-      var lastspace = value.lastIndexOf(' ');
-      if (lastspace != -1) {
-        value = value.substr(0, lastspace);
-      }
-    }
-
-    return value + (tail || ' …');
-  };
-});
-
-
-
-angular.module('yodacore')
-.filter('timeString', ['yodacore.time', function (time) {
-  return function (duration) {
-    duration = parseFloat(duration); // in minute
-    return time.convertToStr(duration);
-  };
-}]);
-
-
-angular.module('yodacore')
-.filter('startAndEnd', ['yodacore.time', function (time) {
-  return function (start, duration) {
-    if(!start) return ''; 
-    var startDate = new Date(start);
-
-    if(!duration) return time.getTimeString(startDate);
-
-    var endDate = new Date(startDate.getTime() + parseInt(duration, 10) * 60 * 1000);
-
-    return time.getTimeString(startDate) + ' - ' + time.getTimeString(endDate);
-  };
-}]);
-
 
 'use strict';
 
@@ -2784,12 +3824,15 @@ angular.module('yodacore').directive('taskCreatable', ['$document', '$compile', 
 angular.module('yodacore').directive('draggable', ['$document', 'yodacore.dragdropState', function($document, state) {
 
 	return {
+    scope: {
+      draggableData: '=draggableData',
+    },
     link: function($scope, $element, $attrs) {
       var elementOriginalTop = 0;
       var clickedY = 0;
       var dummyEle = angular.element(document.getElementById('drag-drop-dummy'));
       $element.on('mousedown', function(event) {
-        var data = $scope[$attrs['draggableData']];
+        var data = $scope.draggableData;
 
         event.preventDefault();
 
@@ -2883,8 +3926,11 @@ angular.module('yodacore').directive('droppable', ['$document', 'yodacore.dragdr
     }
 	};
 }]);
-angular.module('yodacore').directive('droppableListItem', ['$document', 'yodacore.dragdropState', function($document, state) {
+angular.module('yodacore').directive('droppableListItem', ['$document', 'yodacore.dragdropState', 'yodacore.CONSTS', function($document, state, CONSTS) {
 	return {
+    scope: {
+      droppableListItemModel: '=droppableListItemModel',
+    },
     link: function($scope, $element, $attrs) {
       var draggedTaskPos = null;
       function toggleBottom() {
@@ -2925,9 +3971,9 @@ angular.module('yodacore').directive('droppableListItem', ['$document', 'yodacor
 
       $element.on('mouseup', function(event) {
         if(state.isDragging === true) {
-          $scope.$emit('dropped-item', state.data, {
+          $scope.$emit(CONSTS.EVENT_ITEM_DROPPED_ON_ITEM, state.data, {
             draggedPos: draggedTaskPos
-          }, $attrs['droppableListItemModel'] ? $scope[$attrs['droppableListItemModel']] : null);
+          }, $scope.droppableListItemModel);
           removeSigns();
         }
       });
@@ -2985,6 +4031,21 @@ angular.module('yodacore').directive('droppableCover', ['$document', 'yodacore.d
 
 
 
+(function() {
+'use strict';
+
+function getCharFromEvent(evt) {
+  var character ;
+  if (event.which == null)
+    character = String.fromCharCode(event.keyCode);    // old IE
+  else if (event.which != 0 && event.charCode != 0)
+    character = String.fromCharCode(event.which);	  // All others
+  else
+    character = false
+
+  return character;
+}
+
 angular.module('yodacore').directive('yodaEnter', [function () {
   return function (scope, element, attrs) {
     element.bind("keydown keypress", function (event) {
@@ -2993,6 +4054,34 @@ angular.module('yodacore').directive('yodaEnter', [function () {
           scope.$eval(attrs.yodaEnter);
         });
         event.preventDefault();
+      }
+    });
+  };
+}]);
+
+angular.module('yodacore').directive('yodaTypingColonAtEnd', [function () {
+  return function (scope, element, attrs) {
+    element.bind("keyup", function (event) {
+      var text = element.text();
+
+      if(text.substr(text.length - 1) === ':') {
+        scope.$apply(function (){
+          scope.$eval(attrs.yodaTypingColonAtEnd);
+        });
+      }
+    });
+  };
+}]);
+
+angular.module('yodacore').directive('yodaTypingNotColonAtEnd', [function () {
+  return function (scope, element, attrs) {
+    element.bind("keyup", function (event) {
+      var text = element.text();
+
+      if(text.substr(text.length - 1) !== ':') {
+        scope.$apply(function (){
+          scope.$eval(attrs.yodaTypingNotColonAtEnd);
+        });
       }
     });
   };
@@ -3015,13 +4104,13 @@ angular.module('yodacore').directive('yodaScrollToOnClick', ['yodacore.CONSTS', 
 
 angular.module('yodacore').directive('yodaBackspace', [function () {
   return function (scope, element, attrs) {
-    element.bind("keydown keypress", function (event) {
+    element.bind("keyup", function (event) {
       if(event.which === 8 || event.which === 46) {
         scope.$apply(function (){
           scope.$eval(attrs.yodaBackspace);
         });
 
-        if(scope['newTitle'] === '') { // hardwire to prevent chrome history back
+        if(element.text() === '') { // hardwire to prevent chrome history back
           event.preventDefault();
         }
       }
@@ -3044,16 +4133,17 @@ angular.module('yodacore').directive('yodaUp', [function () {
 /**
  * @desc to detect if user pauses while typing and fire event, pause typing
  */
-angular.module('yodacore').directive('yodaPauseTyping', [function () {
+angular.module('yodacore').directive('yodaPauseTyping', ['yodacore.CONSTS', function (CONSTS) {
   return function (scope, element, attrs) {
     var typeTimeout;
     var time = parseFloat(attrs['yodaPauseTyping']); //in second 
+    var model = attrs['yodaPauseTypingModel'] ? scope[attrs['yodaPauseTypingModel']] : null; //in second 
 
     element.bind("keydown keypress", function (event) {
       if (typeTimeout != undefined) clearTimeout(typeTimeout);
       typeTimeout = setTimeout(callServerScript, time * 1000);
       function callServerScript() {
-        scope.$emit('typing-pause');
+        scope.$emit(CONSTS.EVENT_TYPING_PAUSE, model);
       }
     });
   };
@@ -3148,6 +4238,66 @@ angular.module('yodacore').directive('popoverToggle', ['$timeout', function($tim
   };
 }]);
 
+angular.module('yodacore').directive('focusMeNow', ['$timeout', function($timeout) {
+  return {
+    scope: true,
+    link: function(scope, element, attrs) {
+      $timeout(function() {
+        element[0].focus();
+      }, 100);
+    }
+  };
+}]);
+
+
+angular.module('yodacore').directive('yodaClickMeOnly', ['$parse', '$timeout', '$document', function($parse, $timeout, $document) {
+
+  return {
+    restrict: 'A',
+    compile: function($element, attr) {
+      var fn = $parse(attr['yodaClickMeOnly'], /* interceptorFn */ null, /* expensiveChecks */ true);
+      var fnOut =  $parse(attr['yodaClickMeOnlyOut'], /* interceptorFn */ null, /* expensiveChecks */ true);
+      return function ngEventHandler(scope, element) {
+        var beingClicked = false; // always false except a short duration after clicking
+        element.on('click', function(event) {
+          var callback = function() {
+            fn(scope, {$event:event});
+          };
+
+          var callbackWhenOut = function() {
+            fnOut(scope, {$event:event});
+          };
+
+
+          scope.$apply(callback);
+
+          beingClicked = true;
+          $timeout(function() {
+            beingClicked = false;
+          }, 200);
+
+          $document.on('mousedown', handleDocumentClick);
+
+          function handleDocumentClick(evt) {
+            $timeout(function() {
+              if(beingClicked == false) {
+                scope.$apply(callbackWhenOut);
+                console.log('Hey, got you clicked outside');
+                $document.unbind('mousedown', handleDocumentClick);
+              }
+            }, 50);
+          }
+        });
+
+
+
+      };
+    }
+  };
+}
+]);
+
+})();
 
 angular.module('yodacore').directive('movable', ['$document', function($document) {
 
@@ -3242,3 +4392,63 @@ angular.module('yodacore').directive('resizable', ['$document', function($docume
     }
 	};
 }]);
+
+angular.module('yodacore')
+.filter('cut', function () {
+  return function (value, wordwise, max, tail) {
+    if (!value) return '';
+
+    max = parseInt(max, 10);
+    if (!max) return value;
+    if (value.length <= max) return value;
+
+    value = value.substr(0, max);
+    if (wordwise) {
+      var lastspace = value.lastIndexOf(' ');
+      if (lastspace != -1) {
+        value = value.substr(0, lastspace);
+      }
+    }
+
+    return value + (tail || ' …');
+  };
+});
+
+
+
+angular.module('yodacore')
+.filter('timeString', ['yodacore.time', function (time) {
+  return function (duration) {
+    duration = parseFloat(duration); // in minute
+    return time.convertToStr(duration);
+  };
+}]);
+
+
+angular.module('yodacore')
+.filter('startAndEnd', ['yodacore.time', function (time) {
+  return function (start, duration) {
+    if(!start) return ''; 
+    var startDate = new Date(start);
+
+    if(!duration) return time.getTimeString(startDate);
+
+    var endDate = new Date(startDate.getTime() + parseInt(duration, 10) * 60 * 1000);
+
+    return time.getTimeString(startDate) + ' - ' + time.getTimeString(endDate);
+  };
+}]);
+
+angular.module('yodacore')
+.filter('yodaDateString', ['yodacore.time', 'dateFilter', function (time, dateFilter) {
+  return function (date) {
+    var now = new Date();
+    if(time.areSameDates(now, date)) return 'Today';
+
+    var yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    if(time.areSameDates(yesterday, date)) return 'Yesterday';
+
+    return dateFilter(date);
+  };
+}]);
+

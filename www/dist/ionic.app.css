@@ -7731,12 +7731,35 @@ a.button {
   color: white; }
   .take-note .upcoming-task .time {
     float: right; }
+.take-note .list-item-note p {
+  color: #222 !important;
+  font-size: 16px; }
 
 .post-btn.active {
   color: #387ef5 !important;
   opacity: 1 !important; }
 .post-btn.inactive {
   color: #ddd !important; }
+
+.entry-detail .entry-content {
+  min-height: 60px;
+  border: solid 1px #ddd;
+  border-radius: 5px;
+  padding: 10px;
+  margin: 5px; }
+.entry-detail .task-title {
+  min-height: 30px;
+  line-height: 30px;
+  border: solid 1px #ccc;
+  padding: 3px 3px 3px 10px;
+  margin: 5px;
+  margin-top: 15px;
+  box-shadow: 1px 1px 1px #ccc; }
+  .entry-detail .task-title .remove-task-btn {
+    float: right;
+    font-size: 15pt;
+    padding: 0px 5px 0px 10px;
+    border-left: solid 1px #ccc; }
 
 .task-diary-list .middle {
   display: inline-block;
