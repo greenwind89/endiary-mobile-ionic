@@ -5,6 +5,8 @@ angular.module('endiary', [
   'ionic', 
   'muser', 
   'mdiary', 
+  'mlist', 
+  'mtask', 
 
   // shared module from web
   'yodacore']) 
@@ -36,25 +38,25 @@ angular.module('endiary', [
   .state('main', {
     url: '/main',
     templateUrl: 'template/endiary/main.html',
-    controller: 'endiary.mainCtrl',
+    controller: 'endiary.mainCtrl as vm',
     abstract: true
   })
-  .state('main.taskDiary', {
-    url: '/taskDiary',
-    views: {
-      'mainContent': { 
-        templateUrl: 'template/endiary/taskDiaryView.html',
-        controller: 'endiary.taskDiaryCtrl as vm'
-      },
-      // 'topList@main.taskDiary': {
-      //   templateUrl: 'template/task/taskList.html',
-      // },
-      // 'bottomList@main.taskDiary': {
-      //   templateUrl: 'template/task/taskListWithTime.html',
-      // }
-    }
-  }).
-  state('main.takeNote', {
+  // .state('main.taskDiary', {
+  //   url: '/taskDiary',
+  //   views: {
+  //     'mainContent': { 
+  //       templateUrl: 'template/endiary/taskDiaryView.html',
+  //       controller: 'endiary.taskDiaryCtrl as vm'
+  //     },
+  //     // 'topList@main.taskDiary': {
+  //     //   templateUrl: 'template/task/taskList.html',
+  //     // },
+  //     // 'bottomList@main.taskDiary': {
+  //     //   templateUrl: 'template/task/taskListWithTime.html',
+  //     // }
+  //   }
+  // }).
+  .state('main.takeNote', {
     url: '/takeNote',
     views: {
       'mainContent': { 

@@ -5,6 +5,8 @@ angular.module('endiary', [
   'ionic', 
   'muser', 
   'mdiary', 
+  'mlist', 
+  'mtask', 
 
   // shared module from web
   'yodacore']) 
@@ -36,25 +38,25 @@ angular.module('endiary', [
   .state('main', {
     url: '/main',
     templateUrl: 'template/endiary/main.html',
-    controller: 'endiary.mainCtrl',
+    controller: 'endiary.mainCtrl as vm',
     abstract: true
   })
-  .state('main.taskDiary', {
-    url: '/taskDiary',
-    views: {
-      'mainContent': { 
-        templateUrl: 'template/endiary/taskDiaryView.html',
-        controller: 'endiary.taskDiaryCtrl as vm'
-      },
-      // 'topList@main.taskDiary': {
-      //   templateUrl: 'template/task/taskList.html',
-      // },
-      // 'bottomList@main.taskDiary': {
-      //   templateUrl: 'template/task/taskListWithTime.html',
-      // }
-    }
-  }).
-  state('main.takeNote', {
+  // .state('main.taskDiary', {
+  //   url: '/taskDiary',
+  //   views: {
+  //     'mainContent': { 
+  //       templateUrl: 'template/endiary/taskDiaryView.html',
+  //       controller: 'endiary.taskDiaryCtrl as vm'
+  //     },
+  //     // 'topList@main.taskDiary': {
+  //     //   templateUrl: 'template/task/taskList.html',
+  //     // },
+  //     // 'bottomList@main.taskDiary': {
+  //     //   templateUrl: 'template/task/taskListWithTime.html',
+  //     // }
+  //   }
+  // }).
+  .state('main.takeNote', {
     url: '/takeNote',
     views: {
       'mainContent': { 
@@ -101,7 +103,57 @@ angular.module('mdiary', ['yodacore'])
 (function() {
 'use strict';
 
-angular.module('mtask', ['yodacore']);
+angular.module('mlist', ['yodacore'])
+.config(function($stateProvider, $urlRouterProvider) {
+
+  $stateProvider
+
+  .state('main.detailList', {
+    url: '/list/:id',
+    views: {
+      'mainContent': { 
+        templateUrl: 'template/mlist/detailList.html',
+        controller: 'mlist.detailListCtrl as vm',
+      },
+    }
+  })
+  .state('main.listLists', {
+    url: '/lists',
+    views: {
+      'mainContent': { 
+        templateUrl: 'template/mlist/listLists.html',
+        controller: 'mlist.listListsCtrl as vm',
+      },
+    }
+  });
+
+});
+
+
+})();
+
+
+
+
+(function() {
+'use strict';
+
+angular.module('mtask', ['yodacore'])
+.config(function($stateProvider, $urlRouterProvider) {
+
+  $stateProvider
+
+  .state('main.listTaskByDate', {
+    url: '/listTaskByDate/:type',
+    views: {
+      'mainContent': { 
+        templateUrl: 'template/mtask/listTasksByDateView.html',
+        controller: 'mtask.listTasksByDateCtrl as vm',
+      },
+    }
+  });
+
+});
 
 })();
 
@@ -124,6 +176,920 @@ angular.module('muser', ['ionic', 'yodacore'])
 
 
 angular.module('yodacore', ['ngResource']);
+
+(function() {
+'use strict';
+
+angular.module('yodacore').controller('yodacore.itemListCtrl', ItemListCtrl); 
+
+ItemListCtrl.$inject = ['$scope', 'yodacore.listDataService', 'yodacore.helper', 'yodacore.taskDataService', 'yodacore.CONSTS']
+
+function ItemListCtrl($scope, ListService, helper, TaskService, CONSTS) {
+  var vm = this;
+  // MARK: bindable variables
+  vm.list = null;
+  // MARK: bindable functions
+  vm.removeList = removeList;
+  vm.showTasksOfList = showTasksOfList;
+  vm.markListAsImportant = markListAsImportant;
+  vm.updateTitleAndNote = updateTitleAndNote;
+
+
+  // MARK: Initialization
+  // init();
+  initWatches();
+
+  function init() {
+    vm.list = $scope.modelForListItem;
+    console.log('init list ', vm.list);
+  }
+
+  function initWatches() {
+    $scope.$on(CONSTS.EVENT_ITEM_DROPPED_ON_ITEM, function(evt, droppedList, param) {
+      if(droppedList.is_task) {
+        var task = droppedList;
+        task.list_id = vm.list._id;
+        task.parent_section_id = null;
+        task.list_order_number = helper.getMaxOrder();
+        task.color = vm.list.color;
+        TaskService.updateTask(task);
+      } else {
+        console.log('dropped');
+        ListService.updateAListOrder(vm.list, droppedList, param.draggedPos, $scope.$parent.listVm.lists);
+      }
+    });
+
+    
+    $scope.$on('typing-pause', function(evt) {
+      evt.stopPropagation();
+      updateTitleAndNote();
+    });
+
+    $scope.$on('change-color', function(evt, newColor) {
+      vm.list.color = newColor; 
+      console.log('ignate change color');
+      ListService.updateListColor(vm.list);
+    });
+
+    $scope.$watch('modelForListItem', function() {
+      init();
+    });
+  }
+
+  function removeList() {
+    if(confirm('Are you sure you want to delete list "' + vm.list.title + '" ?')) {
+      ListService.removeList(vm.list).then(function() {
+      });;
+      $scope.$emit(CONSTS.EVENT_LIST_DELETED, vm.list);
+    }
+  }
+
+  function showTasksOfList() {
+    $scope.shouldDisplayTaskList = !$scope.shouldDisplayTaskList;
+    if($scope.shouldDisplayTaskList === true) $scope.$broadcast('loadTaskList');
+  }
+
+  function markListAsImportant() {
+    vm.list.is_important = !vm.list.is_important;
+    ListService.updateList(vm.list);
+  }
+
+  function updateTitleAndNote() {
+    ListService.updateList(vm.list);
+  }
+
+
+};
+
+
+})();
+
+
+(function() {
+'use strict';
+
+angular.module('yodacore').controller('yodacore.listListsCtrl', ListListsCtrl);
+
+ListListsCtrl.$inject = ['$scope', 'yodacore.listDataService', 'yodacore.CONSTS'];
+
+function ListListsCtrl($scope, ListService, CONSTS) {
+  var vm = this; 
+
+  // MARK: Bindable variables
+  vm.currentList = null;
+  vm.lists = [];
+
+  // MARK: Bindable functions
+  vm.setCurrent = setCurrent;
+  
+  init();
+  initWatches();
+
+  function init() {
+    ListService.getAllLists().then(function(lists) {
+      vm.lists = lists;
+      if(!vm.lists) return;
+
+      sortList();
+      setCurrent(vm.lists[0]);
+    });
+  }
+
+  function  initWatches() {
+    $scope.$on(CONSTS.EVENT_SOME_LISTS_UPDATED_OR_ADDED, function() {
+      sortList();
+    });
+  }
+
+  function setCurrent(list) {
+    if(vm.currentList) vm.currentList.__yoda_is_current = false;
+    vm.currentList = list;
+    vm.currentList.__yoda_is_current = true;
+    $scope.$emit(CONSTS.EVENT_LIST_SELECTED, vm.currentList);
+  }
+
+  function sortList() {
+    vm.lists.sort(function(a,b) {
+      return a.order_number - b.order_number;
+    });
+  }
+};
+})();
+
+
+(function() {
+  'use strict';
+
+  angular.module('yodacore').controller('yodacore.createEntryCtrl', CreateEntryCtrl); 
+
+  CreateEntryCtrl.$inject = ['yodacore.recordDataService', '$scope', 'yodacore.CONSTS'];
+  function CreateEntryCtrl(RecordService, $scope, CONSTS) {
+    var vm = this; 
+    var options;
+    // MARK: bindable variables
+    vm.newContent = '';
+    vm.currentTask = null;
+
+    // MARK: bindable functions
+    vm.createNewEntry = createNewEntry;
+
+    initWatches();
+
+    function init() {
+      options = $scope.createEntryOptions;
+      console.log('options', options);
+
+      if(options) {
+        vm.currentTask = options.task;
+      }
+    }
+
+    function initWatches() {
+      $scope.$watch('createEntryOptions', function() {
+        init();
+      });
+    }
+
+    // MARK: initialization
+
+    // MARK: functions
+    function createNewEntry() {
+      var newEntry = {
+        title: '',
+        content: vm.newContent,
+        start_time: new Date()
+      };
+
+      if(options.type === CONSTS.TYPE_CREATE_ENTRY_IN_TASK && vm.currentTask) {
+        newEntry.task_id = vm.currentTask._id;
+        newEntry.task_title = vm.currentTask.title;
+        newEntry.color = vm.currentTask.color;
+      }
+
+      RecordService.createNewRecord(newEntry);
+
+      vm.newContent = '';
+    }
+  }
+})();
+
+
+(function() {
+  'use strict';
+
+  angular.module('yodacore').controller('yodacore.itemEntryCtrl', ItemEntryCtrl); 
+
+  ItemEntryCtrl.$inject = ['yodacore.CONSTS', '$scope', 'yodacore.recordDataService'];
+  function ItemEntryCtrl(CONSTS, $scope, RecordService) {
+    var vm = this; 
+    // MARK: bindable variables
+    vm.entry = null;
+
+    // MARK: bindable functions
+    vm.removeEntry = removeEntry;
+    vm.removeTaskFromEntry = removeTaskFromEntry;
+
+    // MARK: initialization
+    init();
+    initWatches();
+
+    // MARK: functions
+    function init() {
+      vm.entry = $scope.entry;
+    }
+
+    function initWatches() {
+      $scope.$on(CONSTS.EVENT_TYPING_PAUSE, function(evt, entry) {
+        vm.entry && RecordService.updateRecord(vm.entry); 
+        evt.stopPropagation();
+      });
+
+      $scope.$on(CONSTS.EVENT_TASK_TYPEAHEAD_SELECTED, function(evt, task) {
+        console.log('task, entry', task);
+
+        updateTaskForEntry(task);
+        evt.stopPropagation();
+      });
+    }
+
+
+    function updateTaskForEntry(task) {
+      RecordService.assignTaskForRecord(task, vm.entry);
+    }
+
+
+    function removeEntry() {
+      RecordService.removeRecord(vm.entry);
+    }
+
+    function removeTaskFromEntry() {
+      RecordService.removeTaskFromRecord(vm.entry);
+    }
+  }
+})();
+
+
+
+(function() {
+  'use strict';
+
+  angular.module('yodacore').controller('yodacore.listEntriesCtrl', ListEntriesCtrl); 
+
+  ListEntriesCtrl.$inject = ['yodacore.CONSTS', '$scope', 'yodacore.recordDataService', 'yodacore.time', 'yodacore.recordProcessService'];
+  function ListEntriesCtrl(CONSTS, $scope, RecordService, time, RecordProcess) {
+    var vm = this; 
+    var options;
+    var currentTask;
+    // MARK: bindable variables
+    vm.thisDate = null;
+    vm.groupByTask = false;
+    vm.shouldLoadMore = false;
+    vm.groups = [];
+    vm.haveMoreDataToLoad = true;
+
+    // should be initialized as null for the sake of currentDate variable in groupByDate function
+    vm.currentLoadedDate = null;
+
+    // MARK: bindable functions
+    vm.loadMore = loadMore;
+
+    // MARK: initialization
+    initWatches();
+
+    // MARK: functions
+    function init() {
+      options = $scope.listEntriesOptions; 
+      console.log('current options', options);
+      if(options) {
+        vm.groupByTask = options.groupByTask ? true : false;
+        vm.shouldLoadMore = options.shouldLoadMore ? true : false;
+
+
+        if(options.type === CONSTS.TYPE_ENTRY_BY_DATE_RANGE) {
+          var startDate = options.startDate;
+          var endDate = options.endDate;
+          vm.groups = [getTodayGroup()];
+          getEntriesByDateRange(startDate, endDate);
+          initCreateEntryInDateOptions();
+        }
+
+        else if(options.type === CONSTS.TYPE_ENTRY_BY_TASK) {
+          if(!options.task) return ; // invalide options
+          vm.groups = [getTodayGroup()];
+          getEntriesByTask(options.task);
+          initCreateEntryInTaskOptions();
+        }
+        else {
+          console.error('This type is not handled yet', options.type);
+        }
+
+      } 
+      
+      // default option
+      else {
+      }
+
+      
+    }
+
+    function initWatches() {
+      $scope.$watch('listEntriesOptions', function() {
+        init();
+      });
+    }
+
+    function initCreateEntryInDateOptions() {
+      $scope.createEntryOptions = {
+        type: CONSTS.TYPE_CREATE_ENTRY_IN_DATE,
+      };
+    }
+
+    function initCreateEntryInTaskOptions() {
+      $scope.createEntryOptions = {
+        type: CONSTS.TYPE_CREATE_ENTRY_IN_TASK,
+        task: options.task,
+      };
+    }
+
+    function getEntriesOfThisDate() {
+      RecordService.getRecordByDate(vm.thisDate).then(function(records) {
+        appendToGroups(grouping(records));
+      });
+    }
+
+    function getEntriesByDateRange(start, end) {
+      RecordService.getRecordsByDateRange(start, end).then(function(records) {
+        appendToGroups(grouping(records));
+      });
+    }
+
+    function getEntriesByTask(task) {
+      RecordService.getRecordsByTaskId(task._id).then(function(records) {
+        appendToGroups(grouping(records));
+      });
+    }
+
+    function grouping(entries) {
+      return groupByDate(entries);
+    }
+
+    function appendToGroups(groups) {
+      for(var i = 0, len = groups.length; i < len; i++) {
+        vm.groups.push(groups[i]);
+      }
+    }
+
+    function getMoreEntries() {
+      RecordService.getMoreRecordsByDate(vm.currentLoadedDate, CONSTS.MAX_RECORD_PER_LOAD_MORE).then(function(records) {
+        if(records.length === 0) vm.haveMoreDataToLoad = false;
+        appendToGroups(grouping(records));
+        $scope.$broadcast('scroll.infiniteScrollComplete');
+      });
+
+    }
+
+    // by default we want today group already in group list
+    function getTodayGroup() {
+      var date = new Date();
+
+      var currentGroup = {
+        is_group: true,
+        time: date,
+        items: (options.type === CONSTS.TYPE_ENTRY_BY_TASK) ?  RecordService.getRecordsOfTaskByDateNoSync(options.task._id, date) : RecordService.getRecordByDateNoSync(date),
+        groupByTask: vm.groupByTask
+      };
+      vm.currentLoadedDate = date;
+
+      return currentGroup;
+    }
+
+    /**
+     * @pre: all neccessary entries already retrieved, using all nosync methods
+     */
+    function groupByDate(entries) {
+      var groups = []; 
+      var currentDate = vm.currentLoadedDate;
+      var currentGroup = null;
+      RecordProcess.sortRecordByDate(entries)
+
+      for(var i = 0, len = entries.length; i < len; i++) {
+        var entry = entries[i];
+        var startTime  = new Date(entry.start_time);
+        if(time.areDifferentDates(startTime, currentDate)) {
+          currentDate = startTime; 
+          currentGroup = {
+            is_group: true,
+            time: startTime,
+            title: 'group ' + startTime.toTimeString(),
+            items: (options.type === CONSTS.TYPE_ENTRY_BY_TASK) ?  RecordService.getRecordsOfTaskByDateNoSync(options.task._id, currentDate) : RecordService.getRecordByDateNoSync(currentDate),
+            groupByTask: vm.groupByTask
+          };
+
+          groups.push(currentGroup);
+        }
+
+      }
+
+      if(entries.length > 0) {
+        vm.currentLoadedDate = new Date(entries[entries.length - 1].start_time);
+      }
+
+      console.log('group by dates current loaded', groups, vm.currentLoadedDate);
+
+      return groups;
+    }
+
+    function loadMore() {
+      getMoreEntries();
+    }
+  }
+})();
+
+
+(function() {
+'use strict';
+
+angular.module('yodacore').controller('yodacore.createTaskCtrl', CreateTaskCtrl);
+
+CreateTaskCtrl.$inject = ['$scope', 'yodacore.taskDataService', 'yodacore.helper', 'yodacore.TASK', 'yodacore.CONSTS']; 
+
+function CreateTaskCtrl($scope, TaskService, helper, TASK, CONSTS) {
+  var vm = this;
+  var createTaskFunc; 
+
+  // Bindable variables 
+  vm.newTitle = '';
+  vm.placeholderText = 'Your New Task';
+  vm.parentList = null;
+  vm.tasksInSameList = [];
+  vm.currentDate = null;
+
+  // Bindable functions
+  vm.createNewTask = createNewTask;
+
+
+  // MARK: Initialization 
+  init();
+  initWatches();
+
+  function init() {
+    var options = $scope.createTaskOptions; 
+
+    if(options) {
+      if(options.type === CONSTS.TYPE_CREATE_TASK_IN_DATE) {
+        createTaskFunc = createTaskInDate;
+        vm.currentDate = options.currentDate;
+        vm.tasksInSameList = options.tasksInList;
+      }
+      else if(options.type === CONSTS.TYPE_CREATE_TASK_IN_LIST) {
+        createTaskFunc = createTaskInList;
+        vm.parentList = options.currentList;
+        vm.tasksInSameList = options.tasksInList;
+      }
+      else if(options.type === CONSTS.TYPE_CREATE_SUBTASK_OF_TASK) {
+        createTaskFunc = createSubtaskOfTask;
+        vm.parentTask = options.currentTask;
+        vm.tasksInSameList = options.tasksInList;
+      }
+    }
+  }
+
+  function initWatches() {
+    $scope.$watch('createTaskOptions', function() {
+      init();
+    });
+  }
+  
+  function createTaskInDate() {
+    var newTask = {
+      title: vm.newTitle,
+      assigned_date: vm.currentDate,
+    };
+    var tasks = vm.tasksInSameList;
+
+    newTask.date_list_order_number = TaskService.getOrderNumber(tasks.length === 0 ? null : tasks[tasks.length - 1], tasks, 'date');
+    TaskService.createNewTask(newTask); 
+  }
+
+  function createTaskInList() {
+    if(!vm.parentList) {
+      console.error('no parent list');
+      return; 
+    }
+
+    var newTask = {
+      title: vm.newTitle
+    };
+    var list = vm.parentList;
+    var tasks = vm.tasksInSameList;
+
+    newTask.list_id = list._id;
+    newTask.color = list.color;
+    newTask.list_order_number = TaskService.getOrderNumber(tasks.length === 0 ? null : tasks[tasks.length - 1], tasks, 'list');
+
+    TaskService.createNewTask(newTask).then(function(task) {
+    });
+  }
+
+  function createSubtaskOfTask() {
+    if(!vm.parentTask) {
+      console.error('no parent task');
+      return; 
+    }
+
+    TaskService.createNewSubtaskOfTask(vm.newTitle, vm.parentTask, vm.tasksInSameList).then(function(task) {
+    });
+  }
+
+
+  function createNewTask() {
+    createTaskFunc();
+    $scope.$emit(CONSTS.EVENT_CREATED_TASK);
+    vm.newTitle = '';
+  }
+
+  $scope.createNewTask = function() {
+    createTaskFunc();
+
+    return; 
+    var newTask = {
+      title: $scope.newTask.title,
+      items: []
+    };
+    var taskTitle = newTask.title;
+
+    if($scope.isInInboxCtrl) {
+      newTask.is_in_inbox = true;
+    } else { //inbox does not care about date  or list
+      if(!$scope.createTaskTimeline && !$scope.isInTaskItemCtrl && $scope.list && $scope.list._id) {
+        newTask.list_id = $scope.list._id;
+        newTask.color = $scope.list.color;
+        newTask.list_order_number = TaskService.getOrderNumber($scope.tasks.length === 0 ? null : $scope.tasks[$scope.tasks.length - 1], $scope.tasks, 'list');
+
+        if($scope.tasks.length > 0) {
+          var last = $scope.tasks[$scope.tasks.length - 1];
+          if(last.is_section === true) {
+            newTask.parent_section_id = last._id;
+          }
+          else if(last.parent_section_id !== null) {
+            newTask.parent_section_id = last.parent_section_id;
+          }
+        }
+
+      }
+
+      if($scope.thisDate) {
+        newTask.assigned_date = $scope.thisDate;
+        if(!$scope.tasks) {
+          var tasks = TaskService.getTaskByDateNoSubTaskNoSync($scope.thisDate);
+          newTask.date_list_order_number = TaskService.getOrderNumber(tasks.length === 0 ? null : tasks[tasks.length - 1], tasks, 'date');
+        } else {
+          newTask.date_list_order_number = TaskService.getOrderNumber($scope.tasks.length === 0 ? null : $scope.tasks[$scope.tasks.length - 1], $scope.tasks, 'date');
+        }
+
+        if($scope.createTaskTimeline) { // create task in timeline based on position
+          var top = $scope.taskTopPosition;
+          var fromBeginToCurrentTopInMinutes = Math.round((top / $scope.timeTableHeight) * (24 * 60));
+          var startDate = new Date($scope.thisDate);
+          startDate.setHours(0);
+          startDate.setMinutes(fromBeginToCurrentTopInMinutes);
+          startDate.setSeconds(0);
+
+          newTask.duration = TASK.DEFAULT_DURATION_IN_MINUTE;
+          newTask.start_time = startDate;
+         
+        }
+
+      }
+
+      if($scope.isInTaskItemCtrl) { // create subtask
+        newTask.parent_task_id = $scope.parentTask._id;
+        var items = helper.parseHashtag(newTask.title);
+        if(items.length === 1) {
+          var item = items[0];
+          newTask.item_name = item.itemName;
+          newTask.item_quantity = item.quantity;
+          newTask.item_unit = item.unit;
+        } else if(items.length === 0) {
+        } else {
+          console.error('Cannot have more than 2 items in subtask');
+          return ;
+        }
+
+      } else {
+        newTask.title = helper.removeMatchedTag(newTask.title);
+      }
+    }
+
+    $scope.$emit(CONSTS.EVENT_CREATED_TASK);
+
+
+    TaskService.createNewTask(newTask).then(function(task) {
+      if(!task.parent_task_id) {
+        TaskService.createNewSubtasksOfTaskFromString(taskTitle, task);
+      } 
+    });;
+
+    $scope.newTask.title = '';
+  }
+
+};
+
+})();
+
+
+
+(function() {
+'use strict';
+
+angular.module('yodacore').controller('yodacore.itemTaskCtrl', ItemTaskCtrl);
+
+ItemTaskCtrl.$inject = ['$scope', 'yodacore.taskDataService', 'yodacore.time', 'yodacore.helper', 'yodacore.listDataService', 'yodacore.recordDataService', 'yodacore.taskRecordService', 'yodacore.TASK', '$rootScope', 'yodacore.sectionService', 'yodacore.CONSTS']
+
+function ItemTaskCtrl($scope, TaskService, time, helper, ListService, RecordService, TaskRecordService, TASK, $rootScope, SectionService, CONSTS) {
+  var vm = this; 
+
+  // MARK: bindable variable
+  vm.task = null;
+  $scope.TASK = TASK;
+
+
+  // MARK: bidable functions
+  vm.setCurrent = setCurrent;
+  vm.removeTask = removeTask;
+  vm.moveUpATask = moveUpATask;
+  vm.moveDownAtask = moveDownAtask;
+  vm.deleteCharacter = deleteCharacter;
+  vm.markTaskAsDone = markTaskAsDone;
+  vm.procrastinateTask = procrastinateTask;
+  vm.resetDateData = resetDateData;
+  vm.updateTitleAndNote = updateTitleAndNote;
+  vm.createNextTask = createNextTask;
+  vm.changeIntoSection = changeIntoSection;
+  vm.changeIntoNotSection = changeIntoNotSection;
+
+  // MARK: Init
+  init();
+  initWatches();
+
+
+  function init() {
+    vm.task = $scope.modelForTaskItem;
+    // vm.task = $scope.modelForTaskItem;
+  }
+
+  function initWatches() {
+    $scope.$on('select-a-list', function(event, list) {
+      vm.task.list_id = list._id;
+      vm.task.color = list.color;
+      vm.task.list_order_number = helper.getMinOrder();
+      TaskService.updateTask(vm.task);
+      $scope.listOfTask = ListService.getListById(vm.task.list_id);
+    });
+
+
+    $scope.$on(CONSTS.EVENT_TYPING_PAUSE, function(evt) {
+      evt.stopPropagation();
+      updateTitleAndNote();
+    });
+
+    $scope.$on(CONSTS.EVENT_CHANGE_TASK_DURATION, function(evt) {
+      TaskService.updateTask(vm.task);
+    });
+
+    $scope.$on(CONSTS.EVENT_CHANGE_TASK_START_TIME, function(evt) {
+      TaskService.updateTask(vm.task);
+    });
+
+    $scope.$on('change-color', function(evt, newColor) {
+      vm.task.color = newColor; 
+      TaskService.updateTask(vm.task);
+    });
+
+    $scope.$on('current-time-change', function(evt) {
+      // checkState(vm.task);
+    });
+
+    $scope.$watch('modelForTaskItem', function(evt) {
+      init();
+    });
+  }
+
+
+  function initWithTask() {
+    $scope.estimatedDurationInHour = Math.round(vm.task.estimated_duration / 60);
+    $scope.currentItemDoneQuantity = vm.task.item_quantity_done;
+    $scope.askTime = false;
+    $scope.shouldShowAskItemNumber = false;
+    // $scope.completePercentage = TaskService.getCompletePercentage(vm.task); 
+    $scope.listOfTask = ListService.getListById(vm.task.list_id);
+
+    $scope.timeToComplete = (vm.task.calendar && vm.task.start_time) ? time.distance(new Date(vm.task.start_time), new Date(vm.task.end_time), 'h') : 1;
+    $scope.shouldShowTimeDetail = false;
+    $scope.section = vm.task.parent_section_id ? TaskService.getTaskById(vm.task.parent_section_id) : null;
+    // checkState(vm.task);
+  }
+
+  $scope.$watch('thisDate', function() {
+    // checkState(vm.task);
+  });
+
+  function markTaskAsDone() {
+    TaskRecordService.markTaskAsDone(vm.task, new Date());
+  }
+
+  function markTaskAsDoneForADate() {
+    TaskService.markTaskAsDoneForADate(vm.task).then(function(task) { });
+    RecordService.createNewRecordForDoneTask(vm.task);
+  }
+
+  function removeTask() {
+
+    if(vm.task.is_recurring && $scope.thisDate) {
+      vm.task.recurring_done_dates.push($scope.thisDate);
+      TaskService.updateTask(vm.task);
+    } else {
+      TaskService.removeTask(vm.task);
+    }
+
+  }
+
+  function updateTitleAndNote() {
+    if(vm.task.is_delete) return; // some time the update is called while deleting and update it
+    TaskService.updateTask(vm.task);
+  }
+
+  function createNextTask() {
+    $scope.$emit(CONSTS.EVENT_CREATE_NEW_TASK_NEXT_TO, vm.task);
+    // vm.task.__yoda_is_current = false;
+  }
+
+  function deleteCharacter() {
+    console.log('dlete', vm.task.title);
+    if(vm.task.title === '') {
+      moveUpATask();
+      setTimeout(function() {
+        removeTask();
+      }, 100);
+    }
+  }
+
+  function moveUpATask() {
+    $scope.$emit(CONSTS.EVENT_TASK_MOVE_UP_A_TASK, vm.task);
+  }
+  
+  function moveDownAtask() {
+    $scope.$emit(CONSTS.EVENT_TASK_MOVE_DOWN_A_TASK, vm.task);
+  }
+
+
+
+  /**
+   * @desc move to inbox means that user does not want it on current schedule or belong to a specific day any more 
+   */
+  function moveToInbox() {
+    var inbox = ListService.getInbox();
+    vm.task.is_in_inbox = true;
+    vm.task.calendar = {
+      start_time: null,
+      end_time: null, 
+      assigned_time: null
+    };
+    TaskService.updateTask(vm.task);
+  }
+
+
+  function removeFromThisDate() {
+    vm.task.assigned_date = null;
+    TaskService.updateTask(vm.task);
+  }
+
+  function removeFromList() {
+    vm.task.list_id = null;
+    TaskService.updateTask(vm.task);
+  }
+
+
+
+  function askNumberOfItem() {
+    if(vm.task.item_quantity) {
+      $scope.shouldShowAskItemNumber = true;
+    } else {
+      markTaskAsDone();
+    }
+  }
+
+  // for subtask
+  function updateNewDoneItem() {
+    var difference = $scope.currentItemDoneQuantity - vm.task.item_quantity_done;
+    TaskRecordService.createRecordFromData({
+      title: '#' + vm.task.item_name + ' ' + difference + ' ' + vm.task.item_unit,
+      taskId: vm.task.parent_task_id
+    });
+    vm.task.item_quantity_done = $scope.currentItemDoneQuantity;
+    vm.task.is_done = true;
+    TaskService.updateTask(vm.task);
+  }
+
+  function changeIntoPredictedTime() {
+    vm.task.start_time = vm.task.__yoda_predicted_start_time;
+    vm.task.duration = vm.task.__yoda_predicted_duration;
+
+    TaskService.updateTask(vm.task);
+  }
+
+  function refuseSuggestion() {
+    vm.task.is_refuse_suggestion = true;
+
+    TaskService.updateTask(vm.task);
+  }
+
+  function startTaskNow() {
+    vm.task.start_time = new Date();
+    vm.task.estimated_duration = vm.task.estimated_duration ? vm.task.estimated_duration : 30;
+    vm.task.end_time = new Date(vm.task.start_time.getTime() + vm.task.estimated_duration* 60 * 1000);
+    TaskService.updateTask(vm.task);
+  }
+
+
+
+  // $scope.$watchGroup(['task.duration', 'task.start_time'], function() {
+  //   checkState(vm.task);
+  // })
+
+  function changeDuration() {
+    TaskService.updateTask(vm.task);
+  }
+
+  function changeStartTim() {
+    TaskService.updateTask(vm.task);
+  }
+
+  function resetDateData() {
+    vm.task.assigned_date = null;
+    vm.task.is_recurring = false;
+    $scope.recurring_selected_days = [];
+    $scope.recurring_end_date = null;
+    $scope.recurring_start_date = null;
+    $scope.recurring_num_occurences = null;
+    vm.task.duration = null;
+    vm.task.start_time = null;
+
+    TaskService.updateTask(vm.task);
+  }
+
+  function procrastinateTask() {
+    TaskService.procrastinateTask(vm.task);
+    RecordService.createNewRecordForProcrastinatedTask(vm.task);
+  }
+
+
+  // Functions
+  function setCurrent() {
+    $scope.$emit(CONSTS.EVENT_TASK_SELECTED, vm.task);
+  }
+
+  function checkState(task) {
+    if(!task) return;
+    if(($scope.thisDate && !time.areSameDates(new Date(), $scope.thisDate))) {
+      task.__yoda_state = TASK.STATE_NO_ACTION;
+      return ; // no update if not in today
+    }
+    if(task.is_done) return;
+    var newTime = new Date();
+    if(!task.start_time)  {
+      task.__yoda_state = TASK.STATE_NO_START_TIME;
+      return;
+    }
+    var startTime = new Date(task.start_time);
+    if(time.getTimeStampInDay(startTime) > time.getTimeStampInDay(newTime)){
+      task.__yoda_state = TASK.STATE_TIME_HAS_NOT_COME;
+      return; 
+    }
+
+    if(time.getTimeStampInDay(startTime) + task.duration * 60 * 1000 < time.getTimeStampInDay(newTime)){
+      task.__yoda_state = TASK.STATE_NOT_DONE_OVERTIME;
+    } else {
+      task.__yoda_state = TASK.STATE_DOING;
+    }
+  }
+
+
+  function changeIntoSection() {
+    if(vm.task.is_section) return;
+    vm.task.is_section = true;
+    // TaskService.updateTask(vm.task);
+  }
+
+  function changeIntoNotSection() {
+    if(!vm.task.is_section) return;
+    vm.task.is_section = false;
+    // TaskService.updateTask(vm.task);
+  }
+}
+
+})(); 
+
 
 (function() {
 'use strict';
@@ -1053,9 +2019,9 @@ angular.module('yodacore').factory('yodacore.goalDataService', ['$resource', '$r
 
 'use strict' 
 
-angular.module('yodacore').factory('yodacore.listDataService', ['$resource', '$rootScope', 'yodacore.merge', 'yodacore.taskDataService', '$q', 'yodacore.helper', 'yodacore.superCache', 'yodacore.CONSTS', function($resource, $rootScope, merge, TaskService, $q, helper, superCache, CONSTS) {
+angular.module('yodacore').factory('yodacore.listDataService', ['$resource', '$rootScope', 'yodacore.merge', 'yodacore.taskDataService', '$q', 'yodacore.helper', 'yodacore.superCache', 'yodacore.CONSTS', 'yodacore.sessionService', function($resource, $rootScope, merge, TaskService, $q, helper, superCache, CONSTS, SessionService) {
   var lists = merge(); // NEVER change the reference to list since controller and view watch this object
-  var ListAPI = $resource('/list/:listId', {listId: '@id'}, {
+  var ListAPI = $resource(CONSTS.ROOT_URL + '/list/:listId', {listId: '@id', session_id: SessionService.getSessionId()}, {
       createNewList: {method: 'POST'},
       getAllLists: {method: 'GET',
         params: {timezone_offset_minute: (new Date()).getTimezoneOffset()}, 
@@ -1188,8 +2154,13 @@ angular.module('yodacore').factory('yodacore.listDataService', ['$resource', '$r
   }
 
   function getListById(id) {
-    var result = lists.getGroup({_id: id});
-    return result ? result[0] : null;
+
+    return $q(function(resolve, reject) {
+      ListAPI.get({listId: id}).$promise.then(function(data) {
+        lists.add(data);
+        resolve(data);
+      });
+    });
   }
 }]);
 
@@ -3175,295 +4146,6 @@ function UserDataService($resource, CONSTS, SessionService, $q){
 (function() {
   'use strict';
 
-  angular.module('yodacore').controller('yodacore.createEntryCtrl', CreateEntryCtrl); 
-
-  CreateEntryCtrl.$inject = ['yodacore.recordDataService', '$scope', 'yodacore.CONSTS'];
-  function CreateEntryCtrl(RecordService, $scope, CONSTS) {
-    var vm = this; 
-    var options;
-    // MARK: bindable variables
-    vm.newContent = '';
-    vm.currentTask = null;
-
-    // MARK: bindable functions
-    vm.createNewEntry = createNewEntry;
-
-    initWatches();
-
-    function init() {
-      options = $scope.createEntryOptions;
-      console.log('options', options);
-
-      if(options) {
-        vm.currentTask = options.task;
-      }
-    }
-
-    function initWatches() {
-      $scope.$watch('createEntryOptions', function() {
-        init();
-      });
-    }
-
-    // MARK: initialization
-
-    // MARK: functions
-    function createNewEntry() {
-      var newEntry = {
-        title: '',
-        content: vm.newContent,
-        start_time: new Date()
-      };
-
-      if(options.type === CONSTS.TYPE_CREATE_ENTRY_IN_TASK && vm.currentTask) {
-        newEntry.task_id = vm.currentTask._id;
-        newEntry.task_title = vm.currentTask.title;
-        newEntry.color = vm.currentTask.color;
-      }
-
-      RecordService.createNewRecord(newEntry);
-
-      vm.newContent = '';
-    }
-  }
-})();
-
-
-(function() {
-  'use strict';
-
-  angular.module('yodacore').controller('yodacore.itemEntryCtrl', ItemEntryCtrl); 
-
-  ItemEntryCtrl.$inject = ['yodacore.CONSTS', '$scope', 'yodacore.recordDataService'];
-  function ItemEntryCtrl(CONSTS, $scope, RecordService) {
-    var vm = this; 
-    // MARK: bindable variables
-    vm.entry = null;
-
-    // MARK: bindable functions
-    vm.removeEntry = removeEntry;
-    vm.removeTaskFromEntry = removeTaskFromEntry;
-
-    // MARK: initialization
-    init();
-    initWatches();
-
-    // MARK: functions
-    function init() {
-      vm.entry = $scope.entry;
-    }
-
-    function initWatches() {
-      $scope.$on(CONSTS.EVENT_TYPING_PAUSE, function(evt, entry) {
-        vm.entry && RecordService.updateRecord(vm.entry); 
-        evt.stopPropagation();
-      });
-
-      $scope.$on(CONSTS.EVENT_TASK_TYPEAHEAD_SELECTED, function(evt, task) {
-        console.log('task, entry', task);
-
-        updateTaskForEntry(task);
-        evt.stopPropagation();
-      });
-    }
-
-
-    function updateTaskForEntry(task) {
-      RecordService.assignTaskForRecord(task, vm.entry);
-    }
-
-
-    function removeEntry() {
-      RecordService.removeRecord(vm.entry);
-    }
-
-    function removeTaskFromEntry() {
-      RecordService.removeTaskFromRecord(vm.entry);
-    }
-  }
-})();
-
-
-
-(function() {
-  'use strict';
-
-  angular.module('yodacore').controller('yodacore.listEntriesCtrl', ListEntriesCtrl); 
-
-  ListEntriesCtrl.$inject = ['yodacore.CONSTS', '$scope', 'yodacore.recordDataService', 'yodacore.time', 'yodacore.recordProcessService'];
-  function ListEntriesCtrl(CONSTS, $scope, RecordService, time, RecordProcess) {
-    var vm = this; 
-    var options;
-    var currentTask;
-    // MARK: bindable variables
-    vm.thisDate = null;
-    vm.groupByTask = false;
-    vm.shouldLoadMore = false;
-    vm.groups = [];
-    vm.haveMoreDataToLoad = true;
-
-    // should be initialized as null for the sake of currentDate variable in groupByDate function
-    vm.currentLoadedDate = null;
-
-    // MARK: bindable functions
-    vm.loadMore = loadMore;
-
-    // MARK: initialization
-    initWatches();
-
-    // MARK: functions
-    function init() {
-      options = $scope.listEntriesOptions; 
-      console.log('current options', options);
-      if(options) {
-        vm.groupByTask = options.groupByTask ? true : false;
-        vm.shouldLoadMore = options.shouldLoadMore ? true : false;
-
-
-        if(options.type === CONSTS.TYPE_ENTRY_BY_DATE_RANGE) {
-          var startDate = options.startDate;
-          var endDate = options.endDate;
-          vm.groups = [getTodayGroup()];
-          getEntriesByDateRange(startDate, endDate);
-          initCreateEntryInDateOptions();
-        }
-
-        else if(options.type === CONSTS.TYPE_ENTRY_BY_TASK) {
-          if(!options.task) return ; // invalide options
-          vm.groups = [getTodayGroup()];
-          getEntriesByTask(options.task);
-          initCreateEntryInTaskOptions();
-        }
-        else {
-          console.error('This type is not handled yet', options.type);
-        }
-
-      } 
-      
-      // default option
-      else {
-      }
-
-      
-    }
-
-    function initWatches() {
-      $scope.$watch('listEntriesOptions', function() {
-        init();
-      });
-    }
-
-    function initCreateEntryInDateOptions() {
-      $scope.createEntryOptions = {
-        type: CONSTS.TYPE_CREATE_ENTRY_IN_DATE,
-      };
-    }
-
-    function initCreateEntryInTaskOptions() {
-      $scope.createEntryOptions = {
-        type: CONSTS.TYPE_CREATE_ENTRY_IN_TASK,
-        task: options.task,
-      };
-    }
-
-    function getEntriesOfThisDate() {
-      RecordService.getRecordByDate(vm.thisDate).then(function(records) {
-        appendToGroups(grouping(records));
-      });
-    }
-
-    function getEntriesByDateRange(start, end) {
-      RecordService.getRecordsByDateRange(start, end).then(function(records) {
-        appendToGroups(grouping(records));
-      });
-    }
-
-    function getEntriesByTask(task) {
-      RecordService.getRecordsByTaskId(task._id).then(function(records) {
-        appendToGroups(grouping(records));
-      });
-    }
-
-    function grouping(entries) {
-      return groupByDate(entries);
-    }
-
-    function appendToGroups(groups) {
-      for(var i = 0, len = groups.length; i < len; i++) {
-        vm.groups.push(groups[i]);
-      }
-    }
-
-    function getMoreEntries() {
-      RecordService.getMoreRecordsByDate(vm.currentLoadedDate, CONSTS.MAX_RECORD_PER_LOAD_MORE).then(function(records) {
-        if(records.length === 0) vm.haveMoreDataToLoad = false;
-        appendToGroups(grouping(records));
-        $scope.$broadcast('scroll.infiniteScrollComplete');
-      });
-
-    }
-
-    // by default we want today group already in group list
-    function getTodayGroup() {
-      var date = new Date();
-
-      var currentGroup = {
-        is_group: true,
-        time: date,
-        items: (options.type === CONSTS.TYPE_ENTRY_BY_TASK) ?  RecordService.getRecordsOfTaskByDateNoSync(options.task._id, date) : RecordService.getRecordByDateNoSync(date),
-        groupByTask: vm.groupByTask
-      };
-      vm.currentLoadedDate = date;
-
-      return currentGroup;
-    }
-
-    /**
-     * @pre: all neccessary entries already retrieved, using all nosync methods
-     */
-    function groupByDate(entries) {
-      var groups = []; 
-      var currentDate = vm.currentLoadedDate;
-      var currentGroup = null;
-      RecordProcess.sortRecordByDate(entries)
-
-      for(var i = 0, len = entries.length; i < len; i++) {
-        var entry = entries[i];
-        var startTime  = new Date(entry.start_time);
-        if(time.areDifferentDates(startTime, currentDate)) {
-          currentDate = startTime; 
-          currentGroup = {
-            is_group: true,
-            time: startTime,
-            title: 'group ' + startTime.toTimeString(),
-            items: (options.type === CONSTS.TYPE_ENTRY_BY_TASK) ?  RecordService.getRecordsOfTaskByDateNoSync(options.task._id, currentDate) : RecordService.getRecordByDateNoSync(currentDate),
-            groupByTask: vm.groupByTask
-          };
-
-          groups.push(currentGroup);
-        }
-
-      }
-
-      if(entries.length > 0) {
-        vm.currentLoadedDate = new Date(entries[entries.length - 1].start_time);
-      }
-
-      console.log('group by dates current loaded', groups, vm.currentLoadedDate);
-
-      return groups;
-    }
-
-    function loadMore() {
-      getMoreEntries();
-    }
-  }
-})();
-
-
-(function() {
-  'use strict';
-
   angular.module('mdiary').controller('mdiary.detailEntryCtrl', DetailEntryCtrl); 
 
   DetailEntryCtrl.$inject = ['$stateParams', 'yodacore.recordDataService', '$scope'];
@@ -3491,14 +4173,90 @@ function UserDataService($resource, CONSTS, SessionService, $q){
 })();
 
 (function() {
+  'use strict';
+
+  angular.module('mlist').controller('mlist.detailListCtrl', DetailListCtrl); 
+
+  DetailListCtrl.$inject = ['yodacore.listDataService', '$stateParams' ,'$scope', 'yodacore.CONSTS'];
+  function DetailListCtrl(ListService, $stateParams, $scope, CONSTS) {
+    var vm = this; 
+    // MARK: bindable variables
+    vm.list = null;
+
+    // MARK: bindable functions
+
+    // MARK: initialization
+    init();
+
+    // MARK: functions
+    function init() {
+      if($stateParams.id) {
+        ListService.getListById($stateParams.id).then(function(data) {
+          vm.list = data;
+          $scope.modelForListItem = data;
+
+          initListTasksOptions();
+        });
+      }
+    }
+
+    function initListTasksOptions() {
+      $scope.listTasksOptions = {
+        type: CONSTS.TYPE_TASK_LIST_BY_LIST,
+        currentList: vm.list,
+        shouldFireCurrentEvent: false
+      };
+    }
+    
+  }
+})();
+
+(function() {
+  'use strict';
+
+  angular.module('mlist').controller('mlist.listListsCtrl', ListListsCtrl); 
+
+  ListListsCtrl.$inject = [];
+  function ListListsCtrl() {
+    var vm = this; 
+    // MARK: bindable variables
+
+    // MARK: bindable functions
+
+
+    // MARK: initialization
+
+    // MARK: functions
+  }
+})();
+
+(function() {
 'use strict';
 
-angular.module('mtask').controller('mtask.taskListCtrl', TaskListCtrl); 
+angular.module('mtask').controller('mtask.listTasksByDateCtrl', ListTasksByDateCtrl); 
                                    
-TaskListCtrl.$inject = ['yodacore.userDataService', '$state'];
+ListTasksByDateCtrl.$inject = ['yodacore.userDataService', '$stateParams', 'yodacore.CONSTS', '$scope'];
                                    
-function TaskListCtrl(UserService, $state) { 
+function ListTasksByDateCtrl(UserService, $stateParams, CONSTS, $scope) { 
   var vm = this; 
+  vm.currentDate = null;
+
+  init();
+
+  function init() {
+    if($stateParams.type === CONSTS.TYPE_TODAY_TASK_LIST) {
+      vm.currentDate = new Date();
+      initListTaskOptions();
+    }
+  }
+
+  function initListTaskOptions() {
+    $scope.listTasksOptions = {
+      type: CONSTS.TYPE_TASK_LIST_BY_DATE,
+      currentDate: vm.currentDate 
+    };
+  }
+  
 };
 
 })();
@@ -3548,9 +4306,11 @@ function LoginCtrl (UserService, $state) {
 angular.module('endiary').controller('endiary.mainCtrl', MainCtrl); 
 
 
-MainCtrl.$inject = [];
+MainCtrl.$inject = ['yodacore.CONSTS'];
 
-function MainCtrl() {
+function MainCtrl(CONSTS) {
+  var vm = this;
+  vm.CONSTS = CONSTS;
 }
 
 })();
@@ -3655,39 +4415,6 @@ function MainCtrl() {
   }
 })();
 
-(function() {
-'use strict';
-
-angular.module('endiary').controller('endiary.taskDiaryCtrl', TaskDiaryCtrl); 
-
-
-TaskDiaryCtrl.$inject = ['yodacore.taskDataService', 'yodacore.recordDataService', '$q', '$scope'];
-
-function TaskDiaryCtrl(TaskService, RecordService, $q, $scope) {
-  var vm = this; 
-  vm.thisDate = new Date();
-  vm.tasks = [];
-  vm.records = [];
-
-  // MARK: share functions
-  vm.doRefresh = doRefresh;
-
-  // MARK: initialization 
-  doRefresh();
-
-  // MARK: functions
-  function doRefresh() {
-    $q.when(TaskService.getTaskByDate(vm.thisDate), RecordService.getRecordByDate(vm.thisDate)).then(function(tasks, records) {
-      vm.tasks = tasks;
-      vm.records = records;
-      $scope.$broadcast('scroll.refreshComplete');
-    });
-  }
-}
-
-})();
-
-
 'use strict';
 
 angular.module('yodacore').constant('yodacore.TASK', {
@@ -3729,6 +4456,7 @@ angular.module('yodacore').constant('yodacore.CONSTS', {
   TYPE_NOTE_RELATED_TO_TASK: 'noteRelatedToTask',
 
   TYPE_TASK_LIST_BY_DATE: 'tasksByDate',
+  TYPE_TODAY_TASK_LIST: 'tasksToday',
   TYPE_SUBTASK_LIST_OF_TASK: 'subtasksOfTask',
   TYPE_TASK_LIST_BY_LIST: 'tasksByList',
 

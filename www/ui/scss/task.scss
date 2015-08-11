@@ -1,0 +1,27 @@
+.check-box-btn {
+  font-size: $btn-icon-font-size;
+  &.done {
+    @extend .ion-android-checkbox-outline;
+    color: $balanced;
+  }
+
+  &.not-done {
+    @extend .ion-android-checkbox-outline-blank;
+  }
+  
+}
+
+.list-tasks {
+  .list-task-item {
+    .task-content-holder {
+      .task-title {
+        padding-left: 5px;
+      }
+
+      .task-extra-info {
+        float: right;
+      }
+    }
+    
+  }
+}

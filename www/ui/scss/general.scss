@@ -1,0 +1,5 @@
+[contenteditable]:empty:before {
+  content: attr(placeholder);
+  display: block; /* For Firefox */
+  color: $extra-text-color;
+}

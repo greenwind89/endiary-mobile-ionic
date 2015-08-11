@@ -4,9 +4,11 @@
 angular.module('endiary').controller('endiary.mainCtrl', MainCtrl); 
 
 
-MainCtrl.$inject = [];
+MainCtrl.$inject = ['yodacore.CONSTS'];
 
-function MainCtrl() {
+function MainCtrl(CONSTS) {
+  var vm = this;
+  vm.CONSTS = CONSTS;
 }
 
 })();

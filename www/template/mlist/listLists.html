@@ -1,0 +1,15 @@
+<ion-view view-title="All Lists" >
+  <ion-content data-ng-controller="yodacore.listListsCtrl as vm">
+    <ion-list class="list-lists">
+      <ion-item style="border-color: {{vm.list.color}}" class="item-text-wrap item-remove-animate list-item" data-ng-repeat="modelForListItem in vm.lists"  type="item-text-wrap" data-ng-controller="yodacore.itemListCtrl as vm">
+        <p ui-sref="main.detailList({ id: vm.list._id})" ng-bind-html="vm.list.title"></p>
+        <ion-option-button class="button-assertive" ng-click="vm.removeList()">
+          Delete
+        </ion-option-button>
+      </ion-item>
+    </ion-list>
+
+  </ion-content>
+</ion-view>
+
+

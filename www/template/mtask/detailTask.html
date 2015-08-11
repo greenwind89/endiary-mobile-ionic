@@ -1,0 +1,19 @@
+<ion-view view-title="">
+  <ion-nav-bar>
+    <ion-nav-back-button>
+    </ion-nav-back-button>
+  </ion-nav-bar>
+  <ion-content class="task-detail">
+    <div  data-ng-controller="yodacore.itemTaskCtrl as vm">
+
+      <div contenteditable="true" data-yoda-pause-typing="1" class="list-title" data-ng-model="vm.list.title" style="color: {{list.color}}"> </div>
+      <div placeholder="Your Note ... " contenteditable data-yoda-pause-typing="1" class="list-note" data-ng-model="vm.list.note"> </div>
+
+      <div class="tasks-of-list" data-ng-include="'template/mtask/listTasks.html'">
+      </div>
+    </div>
+
+  </ion-content>
+</ion-view>
+
+

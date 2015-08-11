@@ -21,8 +21,11 @@
         <ion-item menu-close href="#/main/takeNote">
           TakeNote
         </ion-item>
-        <ion-item menu-close href="#/main/taskDiary">
-          Task & Diary
+        <ion-item menu-close ui-sref="main.listTaskByDate({type:vm.CONSTS.TYPE_TODAY_TASK_LIST})">
+          Today Tasks
+        </ion-item>
+        <ion-item menu-close ui-sref="main.listLists()">
+          Lists
         </ion-item>
         <ion-item menu-close href="#/main/logout">
           Log out
