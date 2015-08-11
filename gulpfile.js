@@ -30,8 +30,8 @@ gulp.task('sass', function(done) {
 });
 
 gulp.task('watch', function() {
-  gulp.watch(paths.sass, ['sass']);
-  gulp.watch(paths.js, ['concatAppsJs']);
+  // gulp.watch(paths.sass, ['sass']);
+  // gulp.watch(paths.js, ['concatAppsJs']);
 });
 
 gulp.task('install', ['git-check'], function() {

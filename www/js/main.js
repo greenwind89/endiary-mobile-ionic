@@ -12,8 +12,8 @@ angular.module('endiary', [
   'yodacore']) 
 
 .run(['$ionicPlatform', 'yodacore.CONSTS', function($ionicPlatform, CONSTS) {
-  CONSTS.ROOT_URL = 'http://localhost:3000';
-  // CONSTS.ROOT_URL = 'https://endiary.com';
+  // CONSTS.ROOT_URL = 'http://localhost:3000';
+  CONSTS.ROOT_URL = 'https://endiary.com';
   $ionicPlatform.ready(function() {
     // Hide the accessory bar by default (remove this to show the accessory bar above the keyboard
     // for form inputs)

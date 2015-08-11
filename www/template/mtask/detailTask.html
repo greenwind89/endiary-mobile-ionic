@@ -6,13 +6,13 @@
   <ion-content class="task-detail">
     <div  data-ng-controller="yodacore.itemTaskCtrl as vm">
 
-      <div contenteditable="true" data-yoda-pause-typing="1" class="list-title" data-ng-model="vm.list.title" style="color: {{list.color}}"> </div>
-      <div placeholder="Your Note ... " contenteditable data-yoda-pause-typing="1" class="list-note" data-ng-model="vm.list.note"> </div>
+      <div contenteditable="true" data-yoda-pause-typing="1" class="task-detail-title" data-ng-model="vm.task.title" style="color: {{vm.task.color}}"> </div>
+      <div placeholder="Your Note ... " contenteditable data-yoda-pause-typing="1" class="task-detail-note" data-ng-model="vm.task.note"> </div>
 
-      <div class="tasks-of-list" data-ng-include="'template/mtask/listTasks.html'">
-      </div>
     </div>
 
+    <div data-ng-include="'template/mtask/listTasks.html'"> </div>
+    <div data-ng-include="'template/mdiary/listEntries.html'"> </div>
   </ion-content>
 </ion-view>
 

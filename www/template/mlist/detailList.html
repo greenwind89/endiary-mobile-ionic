@@ -6,7 +6,7 @@
   <ion-content class="list-detail">
     <div  data-ng-controller="yodacore.itemListCtrl as vm">
 
-      <div contenteditable="true" data-yoda-pause-typing="1" class="list-title" data-ng-model="vm.list.title" style="color: {{list.color}}"> </div>
+      <div contenteditable="true" data-yoda-pause-typing="1" class="list-title" data-ng-model="vm.list.title" style="color: {{vm.list.color}}"> </div>
       <div placeholder="Your Note ... " contenteditable data-yoda-pause-typing="1" class="list-note" data-ng-model="vm.list.note"> </div>
 
       <div class="tasks-of-list" data-ng-include="'template/mtask/listTasks.html'">

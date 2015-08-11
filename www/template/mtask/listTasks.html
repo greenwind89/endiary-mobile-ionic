@@ -12,11 +12,11 @@
 
   <ion-list >
     <ion-item class="item-text-wrap list-task-item item-remove-animate" data-ng-repeat="modelForTaskItem in vm.tasks"  type="item-text-wrap" data-ng-controller="yodacore.itemTaskCtrl as vm">
-        <p class="task-content-holder">
-          <span data-ng-class="{done: vm.task.is_done, 'not-done': !vm.task.is_done}" class="check-box-btn" data-ng-click="vm.markTaskAsDone()"></span>
-          <span ui-sref="main.detailTask({ id: task._id})" ng-bind-html="vm.task.title" class="task-title"></span>
-          <span  class="task-extra-info">{{vm.task.start_time | date: 'shortTime'}}</span>
-        </p>
+        <div class="task-content-holder row">
+          <div data-ng-class="{done: vm.task.is_done, 'not-done': !vm.task.is_done}" class="check-box-btn col-10" data-ng-click="vm.markTaskAsDone()"></div>
+          <div ui-sref="main.detailTask({ id: vm.task._id})" ng-bind-html="vm.task.title" class="task-title col-75"></div>
+          <div  class="task-extra-info col-20">{{vm.task.start_time | date: 'shortTime'}}</div>
+        </div>
         
       <ion-option-button class="button-assertive" ng-click="vm.removeTask()">
         Delete

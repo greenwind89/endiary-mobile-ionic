@@ -1,9 +1,13 @@
 
 <div class="list" data-ng-controller="yodacore.listEntriesCtrl as vm">
 
-  <div class="item item-input note-holder" data-ng-controller="yodacore.createEntryCtrl as vm" >
-    <textarea ng-model="vm.note" id="js-note-compose-box" data-focus-me-now class="note-area" placeholder="Note ... "></textarea>
-
+  <div  data-ng-controller="yodacore.createEntryCtrl as vm" class="item item-input-inset">
+    <label class="item-input-wrapper">
+      <input type="text" placeholder="What is on your mind?" data-ng-model="vm.newContent">
+    </label>
+    <button class="button button-small" data-ng-click="vm.createNewEntry()">
+      Submit
+    </button>
   </div>
 
   <ion-list ng-repeat="group in vm.groups" >
@@ -18,11 +22,11 @@
     </ion-item>
   </ion-list>
 
-  <ion-infinite-scroll
-    icon="ion-loading-c"
-    data-ng-if="vm.haveMoreDataToLoad"
-    on-infinite="vm.loadMore()"
-    distance="1%">
-  </ion-infinite-scroll>
+  <!-- <ion-infinite-scroll -->
+  <!--   icon="ion-loading-c" -->
+  <!--   data-ng-if="vm.haveMoreDataToLoad" -->
+  <!--   on-infinite="vm.loadMore()" -->
+  <!--   distance="1%"> -->
+  <!-- </ion-infinite-scroll> -->
 
 </div>

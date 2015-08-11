@@ -14,7 +14,7 @@ angular.module('mtask', ['yodacore'])
         controller: 'mtask.detailTaskCtrl as vm',
       },
     }
-  });
+  })
 
   .state('main.listTaskByDate', {
     url: '/listTaskByDate/:type',

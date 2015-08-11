@@ -20,8 +20,29 @@
 
       .task-extra-info {
         float: right;
+        font-size: $extra-text-font-size;
+        color: $extra-text-color;
       }
     }
     
   }
 }
+
+
+.task-detail{
+  .task-detail-title {
+    margin: -5px;
+    padding: 10px 5px 10px 20px;
+    border-bottom: solid 1px;
+    box-shadow: 0px 1px 3px;
+    line-height: 40px;
+  }
+
+  .task-detail-note {
+    margin: 20px 5px 5px 10px;
+    border: solid 1px #EEE;
+    height: 60px;
+    padding: 5px;
+  }
+}
+

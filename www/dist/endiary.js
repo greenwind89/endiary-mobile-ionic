@@ -12,8 +12,8 @@ angular.module('endiary', [
   'yodacore']) 
 
 .run(['$ionicPlatform', 'yodacore.CONSTS', function($ionicPlatform, CONSTS) {
-  CONSTS.ROOT_URL = 'http://localhost:3000';
-  // CONSTS.ROOT_URL = 'https://endiary.com';
+  // CONSTS.ROOT_URL = 'http://localhost:3000';
+  CONSTS.ROOT_URL = 'https://endiary.com';
   $ionicPlatform.ready(function() {
     // Hide the accessory bar by default (remove this to show the accessory bar above the keyboard
     // for form inputs)
@@ -142,6 +142,16 @@ angular.module('mtask', ['yodacore'])
 .config(function($stateProvider, $urlRouterProvider) {
 
   $stateProvider
+
+  .state('main.detailTask', {
+    url: '/task/:id',
+    views: {
+      'mainContent': { 
+        templateUrl: 'template/mtask/detailTask.html',
+        controller: 'mtask.detailTaskCtrl as vm',
+      },
+    }
+  })
 
   .state('main.listTaskByDate', {
     url: '/listTaskByDate/:type',
@@ -3206,8 +3216,12 @@ function TaskDataService($resource, $rootScope, mergeTask, helper, $q, time, CON
   }
 
   function getTaskById(id) {
-    var result = tasks.getGroup({_id: id});
-    return result ? result[0] : null;
+    return $q(function(resolve, reject) {
+      TaskAPI.get({taskId: id}).$promise.then(function(data) {
+        tasks.add(data);
+        resolve(data);
+      });
+    });
   }
 
   function getCompletePercentage(task) {
@@ -4229,6 +4243,57 @@ function UserDataService($resource, CONSTS, SessionService, $q){
     // MARK: functions
   }
 })();
+
+(function() {
+  'use strict';
+
+  angular.module('mtask').controller('mtask.detailTaskCtrl', DetailTaskCtrl); 
+
+  DetailTaskCtrl.$inject = ['yodacore.taskDataService', '$stateParams' ,'$scope', 'yodacore.CONSTS'];
+  function DetailTaskCtrl(TaskService, $stateParams, $scope, CONSTS) {
+    var vm = this; 
+    // MARK: bindable variables
+    vm.task = null;
+
+    // MARK: bindable functions
+
+    // MARK: initialization
+    init();
+
+    // MARK: functions
+    function init() {
+      if($stateParams.id) {
+        TaskService.getTaskById($stateParams.id).then(function(data) {
+          vm.task = data;
+          $scope.modelForTaskItem = data;
+          initListEntriesOptions();
+          initListSubtasksOptions();
+        });
+
+      }
+    }
+
+    function initListEntriesOptions() {
+      $scope.listEntriesOptions = {
+        type: CONSTS.TYPE_ENTRY_BY_TASK,
+        task: vm.task,
+        groupByTask: false
+      };
+    }
+
+
+    function initListSubtasksOptions() {
+      $scope.listTasksOptions = {
+        type: CONSTS.TYPE_SUBTASK_LIST_OF_TASK,
+        parentTask: vm.task,
+        shouldFireCurrentEvent: false
+      };
+    }
+
+    
+  }
+})();
+
 
 (function() {
 'use strict';
